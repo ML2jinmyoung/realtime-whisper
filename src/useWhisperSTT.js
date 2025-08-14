@@ -1,0 +1,242 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
+
+export const useWhisperSTT = () => {
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [isModelReady, setIsModelReady] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  
+  const workerRef = useRef(null);
+  const processingQueueRef = useRef([]);
+  const isProcessingRef = useRef(false);
+
+  const initializeModel = useCallback(async () => {
+    if (workerRef.current || isModelLoading) return;
+    
+    try {
+      setIsModelLoading(true);
+      setError(null);
+      setLoadingProgress(0);
+      
+      console.log('Web Worker와 Whisper Turbo 모델 초기화 중...');
+      
+      // Web Worker 생성 - npm으로 설치된 transformers.js 사용
+      const worker = new Worker(new URL('./workers/whisper-worker.js', import.meta.url), {
+        type: 'module'
+      });
+      
+      worker.onmessage = (e) => {
+        const { type, status, message, progress, text, timestamp } = e.data;
+        
+        switch (type) {
+          case 'loading':
+            if (status === 'downloading') {
+              setLoadingProgress(progress || 0);
+              console.log(message);
+            } else if (status === 'ready') {
+              setIsModelReady(true);
+              setIsModelLoading(false);
+              setLoadingProgress(100);
+              console.log(message);
+            }
+            break;
+            
+          case 'transcribing':
+            setIsProcessing(true);
+            console.log(message);
+            break;
+            
+          case 'result':
+            handleTranscriptionResult({ text, timestamp });
+            break;
+            
+          case 'error':
+            console.error('Worker error:', message);
+            if (timestamp) {
+              handleTranscriptionError(new Error(message), timestamp);
+            } else {
+              setError(message);
+              setIsModelLoading(false);
+            }
+            break;
+        }
+      };
+
+      worker.onerror = (error) => {
+        console.error('Worker error details:', {
+          message: error.message,
+          filename: error.filename,
+          lineno: error.lineno,
+          colno: error.colno,
+          error: error.error
+        });
+        setError(`Web Worker 오류: ${error.message} (in ${error.filename}:${error.lineno})`);
+        setIsModelLoading(false);
+      };
+      
+      workerRef.current = worker;
+      
+      // Whisper Turbo 모델 로드 요청
+      worker.postMessage({
+        type: 'load-model',
+        model: 'onnx-community/whisper-large-v3-turbo_timestamped'
+      });
+      
+    } catch (err) {
+      console.error('Worker 초기화 실패:', err);
+      setError('Worker 초기화 실패: ' + (err.message || '알 수 없는 오류'));
+      setIsModelLoading(false);
+    }
+  }, []);
+
+  const audioBufferFromBlob = useCallback(async (blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioContext = new AudioContext({ sampleRate: 16000 });
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    let audioData;
+    if (audioBuffer.numberOfChannels === 1) {
+      audioData = audioBuffer.getChannelData(0);
+    } else {
+      const leftChannel = audioBuffer.getChannelData(0);
+      const rightChannel = audioBuffer.getChannelData(1);
+      audioData = new Float32Array(leftChannel.length);
+      for (let i = 0; i < leftChannel.length; i++) {
+        audioData[i] = (leftChannel[i] + rightChannel[i]) / 2;
+      }
+    }
+    
+    if (audioBuffer.sampleRate !== 16000) {
+      const resampledLength = Math.round(audioData.length * 16000 / audioBuffer.sampleRate);
+      const resampledData = new Float32Array(resampledLength);
+      const ratio = audioData.length / resampledLength;
+      
+      for (let i = 0; i < resampledLength; i++) {
+        const srcIndex = Math.round(i * ratio);
+        resampledData[i] = audioData[Math.min(srcIndex, audioData.length - 1)];
+      }
+      
+      audioData = resampledData;
+    }
+    
+    await audioContext.close();
+    return audioData;
+  }, []);
+
+  const handleTranscriptionResult = useCallback(({ text, timestamp }) => {
+    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
+    if (queueItem) {
+      queueItem.resolve({ text, timestamp });
+      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
+    }
+    
+    if (processingQueueRef.current.length === 0) {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  const handleTranscriptionError = useCallback((error, timestamp) => {
+    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
+    if (queueItem) {
+      queueItem.reject(error);
+      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
+    }
+    
+    if (processingQueueRef.current.length === 0) {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  const processAudioQueue = useCallback(async () => {
+    if (isProcessingRef.current || processingQueueRef.current.length === 0 || !workerRef.current) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
+    while (processingQueueRef.current.length > 0 && workerRef.current) {
+      const { audioBlob, timestamp, resolve, reject } = processingQueueRef.current[0];
+
+      try {
+        console.log('STT 처리 시작:', new Date(timestamp).toLocaleTimeString());
+        
+        const audioData = await audioBufferFromBlob(audioBlob);
+        
+        if (audioData.length === 0) {
+          resolve({ text: '', timestamp });
+          processingQueueRef.current.shift();
+          continue;
+        }
+
+        // Worker로 transcription 요청 전송
+        workerRef.current.postMessage({
+          type: 'transcribe',
+          data: {
+            audioData: audioData,
+            options: {
+              language: 'korean',
+              task: 'transcribe',
+              chunk_length_s: 30,
+              stride_length_s: 5,
+              return_timestamps: false,
+              timestamp: timestamp
+            }
+          }
+        });
+
+        break; // Worker에서 결과를 기다리기 위해 루프 중단
+        
+      } catch (err) {
+        console.error('STT 처리 오류:', err);
+        reject(err);
+        processingQueueRef.current.shift();
+      }
+    }
+
+    if (processingQueueRef.current.length === 0) {
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    }
+  }, [audioBufferFromBlob]);
+
+  const transcribeAudio = useCallback(async (audioBlob, timestamp) => {
+    if (!workerRef.current || !isModelReady) {
+      throw new Error('모델이 아직 로딩되지 않았습니다');
+    }
+
+    return new Promise((resolve, reject) => {
+      processingQueueRef.current.push({
+        audioBlob,
+        timestamp,
+        resolve,
+        reject
+      });
+      
+      processAudioQueue();
+    });
+  }, [processAudioQueue, isModelReady]);
+
+  useEffect(() => {
+    initializeModel();
+    
+    // cleanup: component unmount 시 worker 정리
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, [initializeModel]);
+
+  return {
+    isModelLoading,
+    isModelReady,
+    isProcessing,
+    error,
+    loadingProgress,
+    transcribeAudio,
+    initializeModel
+  };
+};
