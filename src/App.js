@@ -267,6 +267,7 @@ function App() {
               disabled={isRecording}
               style={{ marginLeft: '8px' }}
             >
+              <option value={10}>10초</option>
               <option value={30}>30초</option>
               <option value={60}>1분</option>
               <option value={120}>2분</option>

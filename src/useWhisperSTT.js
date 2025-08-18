@@ -60,6 +60,9 @@ export const useWhisperSTT = () => {
               setIsModelLoading(false);
             }
             break;
+          default:
+            // ignore unknown message types
+            break;
         }
       };
 
@@ -124,30 +127,6 @@ export const useWhisperSTT = () => {
     return audioData;
   }, []);
 
-  const handleTranscriptionResult = useCallback(({ text, timestamp }) => {
-    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
-    if (queueItem) {
-      queueItem.resolve({ text, timestamp });
-      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
-    }
-    
-    if (processingQueueRef.current.length === 0) {
-      setIsProcessing(false);
-    }
-  }, []);
-
-  const handleTranscriptionError = useCallback((error, timestamp) => {
-    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
-    if (queueItem) {
-      queueItem.reject(error);
-      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
-    }
-    
-    if (processingQueueRef.current.length === 0) {
-      setIsProcessing(false);
-    }
-  }, []);
-
   const processAudioQueue = useCallback(async () => {
     if (isProcessingRef.current || processingQueueRef.current.length === 0 || !workerRef.current) {
       return;
@@ -200,6 +179,41 @@ export const useWhisperSTT = () => {
       setIsProcessing(false);
     }
   }, [audioBufferFromBlob]);
+
+  const handleTranscriptionResult = useCallback(({ text, timestamp }) => {
+    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
+    if (queueItem) {
+      queueItem.resolve({ text, timestamp });
+      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
+    }
+    
+    // 현재 아이템 처리가 끝났으므로 다음 아이템 처리를 위해 플래그를 해제
+    isProcessingRef.current = false;
+    
+    if (processingQueueRef.current.length === 0) {
+      setIsProcessing(false);
+    } else {
+      // 남은 항목이 있으면 즉시 다음 항목 처리
+      processAudioQueue();
+    }
+  }, [processAudioQueue]);
+
+  const handleTranscriptionError = useCallback((error, timestamp) => {
+    const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
+    if (queueItem) {
+      queueItem.reject(error);
+      processingQueueRef.current = processingQueueRef.current.filter(item => item.timestamp !== timestamp);
+    }
+    
+    // 에러 발생 시에도 다음 작업을 진행할 수 있도록 플래그 해제
+    isProcessingRef.current = false;
+    
+    if (processingQueueRef.current.length === 0) {
+      setIsProcessing(false);
+    } else {
+      processAudioQueue();
+    }
+  }, [processAudioQueue]);
 
   const transcribeAudio = useCallback(async (audioBlob, timestamp) => {
     if (!workerRef.current || !isModelReady) {

@@ -123,10 +123,12 @@ self.addEventListener("message", async (event) => {
         }
     } catch (error) {
         console.error("💥 Worker error:", error);
+        // 메시지에 포함된 timestamp 또는 옵션 내부 timestamp를 에러에 포함하여 상위 큐가 멈추지 않게 함
+        const fallbackTimestamp = message?.data?.options?.timestamp || message?.timestamp;
         self.postMessage({
             type: "error",
             message: error.message,
-            timestamp: message.timestamp
+            timestamp: fallbackTimestamp
         });
     }
 });
