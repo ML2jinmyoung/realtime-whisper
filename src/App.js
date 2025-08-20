@@ -166,20 +166,20 @@ function App() {
     return `준비 완료 (${modelInfo?.description || 'Whisper'})`;
   };
 
-  const getStatusClass = () => {
-    if (!isModelReady || sttError || recordingError) return 'status ready';
-    if (isRecording) return 'status recording';
-    if (isProcessing) return 'status processing';
-    return 'status ready';
-  };
 
   return (
-    <div className="app">
-      <h1>회의록 STT 앱 (VAD 기반)</h1>
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 text-center">
+        회의록 STT 앱 (VAD 기반)
+      </h1>
       
-      <div className="controls">
+      <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
         <button
-          className={`record-button ${isRecording ? 'recording' : 'stopped'}`}
+          className={`px-6 py-3 rounded-lg font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+            isRecording 
+              ? 'bg-red-500 hover:bg-red-600' 
+              : 'bg-green-500 hover:bg-green-600'
+          }`}
           onClick={isRecording ? handleStopRecording : handleStartRecording}
           disabled={!isModelReady && !sttError}
         >
@@ -187,97 +187,105 @@ function App() {
         </button>
         
         {isRecording && (
-          <div style={{ marginLeft: '16px', fontSize: '14px', color: '#6b7280' }}>
-            감지된 음성: {segmentCount}개
+          <div className="text-sm text-gray-600">
+            감지된 음성: <span className="font-medium text-blue-600">{segmentCount}개</span>
           </div>
         )}
         
-        <div className={getStatusClass()}>
-          {isModelLoading && <div className="loading"><div className="spinner"></div></div>}
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${
+          !isModelReady || sttError || recordingError ? 'bg-gray-100 text-gray-600' :
+          isRecording ? 'bg-red-100 text-red-700' :
+          isProcessing ? 'bg-yellow-100 text-yellow-700' :
+          'bg-green-100 text-green-700'
+        }`}>
+          {isModelLoading && <div className="spinner"></div>}
           {getStatusText()}
         </div>
       </div>
 
       {/* 다운로드 섹션 */}
       {transcripts.length > 0 && !isRecording && (
-        <div className="download-section">
-          <h3>회의록 다운로드</h3>
-          <div className="download-buttons">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">회의록 다운로드</h3>
+          <div className="flex flex-wrap gap-3 mb-4">
             <button 
-              className="download-button txt"
+              className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5"
               onClick={downloadAsText}
               title="텍스트 파일로 다운로드"
             >
               📄 TXT 다운로드
             </button>
           </div>
-          <div className="download-info">
+          <div className="text-sm text-gray-600 flex flex-wrap items-center gap-1">
             <span>총 {transcripts.length}개 음성 세그먼트</span>
-            <span> • </span>
+            <span className="text-gray-400">•</span>
             <span>VAD 기반 자동 감지</span>
-            <span> • </span>
+            <span className="text-gray-400">•</span>
             <span>모델: {modelInfo?.description || 'Unknown'}</span>
           </div>
         </div>
       )}
 
       {(sttError || recordingError) && (
-        <div style={{ color: 'red', marginBottom: '20px' }}>
-          오류: {sttError || recordingError}
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <span className="font-medium">오류:</span> {sttError || recordingError}
         </div>
       )}
 
-      <div className="transcript-container">
-        <h2>회의 내용</h2>
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">회의 내용</h2>
         
-        {transcripts.length === 0 && !isRecording && (
-          <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
-            녹음 버튼을 눌러 회의를 시작하세요.
-          </p>
-        )}
+        <div className="max-h-96 overflow-y-auto space-y-2">
+          {transcripts.length === 0 && !isRecording && (
+            <p className="text-gray-500 italic text-center py-8">
+              녹음 버튼을 눌러 회의를 시작하세요.
+            </p>
+          )}
 
-        {isRecording && transcripts.length === 0 && (
-          <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
-            음성 감지 대기 중... 말씀하시면 자동으로 녹음됩니다.
-          </p>
-        )}
+          {isRecording && transcripts.length === 0 && (
+            <p className="text-gray-500 italic text-center py-8">
+              음성 감지 대기 중... 말씀하시면 자동으로 녹음됩니다.
+            </p>
+          )}
 
-        {transcripts.map((transcript) => (
-          <div 
-            key={transcript.id} 
-            className="transcript-item"
-            style={{
-              borderLeftColor: transcript.isError ? '#ef4444' : '#3b82f6'
-            }}
-          >
-            <div className="transcript-timestamp">
-              음성 #{transcript.segmentNumber} ({formatElapsedTime(transcript.timestamp, recordingStartTime)})
-              {transcript.processedAt && (
-                <span style={{ marginLeft: '8px', fontSize: '11px', color: '#9ca3af' }}>
-                  • 처리완료: {new Date(transcript.processedAt).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
+          {transcripts.map((transcript) => (
             <div 
-              className="transcript-text"
-              style={{
-                color: transcript.isError ? '#dc2626' : '#1f2937',
-                fontStyle: transcript.isError ? 'italic' : 'normal'
-              }}
+              key={transcript.id} 
+              className={`bg-white p-3 rounded-lg border-l-4 shadow-sm ${
+                transcript.isError ? 'border-l-red-500' : 'border-l-blue-500'
+              }`}
             >
-              {transcript.text || '(텍스트가 비어있습니다)'}
+              <div className="text-xs text-gray-500 mb-1 flex flex-wrap items-center gap-2">
+                <span className="font-medium">
+                  음성 #{transcript.segmentNumber} ({formatElapsedTime(transcript.timestamp, recordingStartTime)})
+                </span>
+                {transcript.processedAt && (
+                  <span className="text-gray-400">
+                    • 처리완료: {new Date(transcript.processedAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              <div 
+                className={`text-sm leading-relaxed ${
+                  transcript.isError 
+                    ? 'text-red-600 italic' 
+                    : 'text-gray-800'
+                }`}
+              >
+                {transcript.text || '(텍스트가 비어있습니다)'}
+              </div>
             </div>
-          </div>
-        ))}
-        
-        {isRecording && isProcessing && (
-          <div className="transcript-item" style={{ borderLeftColor: '#f59e0b' }}>
-            <div className="loading">
-              <div className="spinner"></div>
-              STT 처리 중...
+          ))}
+          
+          {isRecording && isProcessing && (
+            <div className="bg-white p-3 rounded-lg border-l-4 border-l-yellow-500 shadow-sm">
+              <div className="flex items-center gap-2 text-sm text-yellow-700">
+                <div className="spinner"></div>
+                STT 처리 중...
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
