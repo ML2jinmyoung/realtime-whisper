@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useVADRecording } from './useVADRecording';
 import { useWhisperSTT } from './useWhisperSTT';
 import { Transcript } from './types';
@@ -10,6 +10,7 @@ function App(): JSX.Element {
   const [currentLanguage, setCurrentLanguage] = useState<'korean' | 'english'>('korean');
   
   const processingCountRef = useRef<number>(0);
+  const transcriptsEndRef = useRef<HTMLDivElement>(null);
   
   const {
     isModelLoading,
@@ -129,6 +130,11 @@ function App(): JSX.Element {
     processingCountRef.current = 0;
   }, [stopRecording]);
 
+  // 자동 스크롤 기능
+  useEffect(() => {
+    transcriptsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [transcripts]);
+
   const formatElapsedTime = useCallback((timestamp: number, startTime: number | null): string => {
     if (!startTime) {
       // startTime이 없으면 절대 시간 표시
@@ -231,21 +237,29 @@ function App(): JSX.Element {
         )}
         
         {isRecording && (
-          <button
+          <div 
+            className="flex bg-gray-200 rounded-lg p-1 cursor-pointer"
             onClick={() => {
               const newLang = currentLanguage === 'korean' ? 'english' : 'korean';
               setCurrentLanguage(newLang);
               console.log('🔄 언어 변경:', currentLanguage, '→', newLang);
             }}
-            className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 border-2 ${
-              currentLanguage === 'korean' 
-                ? 'bg-blue-500 hover:bg-blue-600 text-white border-blue-600' 
-                : 'bg-green-500 hover:bg-green-600 text-white border-green-600'
-            }`}
-            title="클릭하여 언어 전환"
           >
-            {currentLanguage === 'korean' ? '🇰🇷 한국어' : '🇺🇸 English'}
-          </button>
+            <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentLanguage === 'korean' 
+                ? 'bg-blue-500 text-white shadow-sm' 
+                : 'text-gray-600 hover:text-gray-800'
+            }`}>
+              🇰🇷 한국어
+            </div>
+            <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentLanguage === 'english' 
+                ? 'bg-blue-500 text-white shadow-sm' 
+                : 'text-gray-600 hover:text-gray-800'
+            }`}>
+              🇺🇸 English
+            </div>
+          </div>
         )}
         
         <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${
@@ -315,6 +329,7 @@ function App(): JSX.Element {
                 </span>
               </div>
             ))}
+            <div ref={transcriptsEndRef} />
           </div>
           
           {isRecording && isProcessing && (
