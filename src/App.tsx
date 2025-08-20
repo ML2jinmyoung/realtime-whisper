@@ -7,6 +7,7 @@ import './index.css';
 function App(): JSX.Element {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [currentLanguage, setCurrentLanguage] = useState<'korean' | 'english'>('korean');
   
   const processingCountRef = useRef<number>(0);
   
@@ -22,7 +23,29 @@ function App(): JSX.Element {
 
   const handleAudioSegment = useCallback(async (audioBlob: Blob, segmentStartTime: number): Promise<void> => {
     if (!isModelReady) {
-      console.warn('모델이 아직 준비되지 않았습니다');
+      console.warn('⚠️ 모델이 아직 준비되지 않았습니다. 현재 상태:', {
+        isModelLoading,
+        isModelReady,
+        error: sttError
+      });
+      
+      // 에러 transcript 추가
+      const segmentNumber = processingCountRef.current + 1;
+      processingCountRef.current++;
+      
+      setTranscripts(prev => {
+        const errorTranscript = {
+          id: segmentStartTime,
+          text: '[모델 로딩 중... 잠시 후 다시 시도해주세요]',
+          timestamp: segmentStartTime,
+          segmentNumber: segmentNumber,
+          processedAt: Date.now(),
+          recordingStartTime: recordingStartTime,
+          isError: true
+        };
+        
+        return [...prev, errorTranscript].sort((a, b) => a.timestamp - b.timestamp);
+      });
       return;
     }
 
@@ -33,7 +56,7 @@ function App(): JSX.Element {
     try {
       processingCountRef.current++;
       
-      const result = await transcribeAudio(audioBlob, segmentStartTime);
+      const result = await transcribeAudio(audioBlob, segmentStartTime, currentLanguage);
       
       setTranscripts(prev => {
         const newTranscript = {
@@ -82,8 +105,15 @@ function App(): JSX.Element {
   } = useVADRecording(handleAudioSegment);
 
   const handleStartRecording = useCallback(async () => {
+    console.log('🎬 녹음 시작 요청, 현재 모델 상태:', {
+      isModelLoading,
+      isModelReady,
+      error: sttError,
+      modelInfo
+    });
+    
     if (!isModelReady) {
-      alert('모델이 아직 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+      alert(`모델이 아직 준비되지 않았습니다.\n상태: ${isModelLoading ? '로딩 중...' : '준비 중'}\n${sttError ? `오류: ${sttError}` : ''}`);
       return;
     }
     
@@ -151,10 +181,10 @@ function App(): JSX.Element {
   const getStatusText = () => {
     if (!isModelReady) {
       if (isModelLoading) {
-        return `Whisper Turbo 모델 로딩 중... ${loadingProgress}%`;
+        return `Whisper 모델 로딩 중... ${loadingProgress}%`;
       }
-      if (sttError) return `모델 오류: ${sttError}`;
-      return '모델 준비 중...';
+      if (sttError) return `❌ 모델 오류: ${sttError}`;
+      return '⏳ 모델 준비 중...';
     }
     
     if (isRecording) {
@@ -198,6 +228,24 @@ function App(): JSX.Element {
           <div className="text-sm text-gray-600">
             감지된 음성: <span className="font-medium text-blue-600">{segmentCount}개</span>
           </div>
+        )}
+        
+        {isRecording && (
+          <button
+            onClick={() => {
+              const newLang = currentLanguage === 'korean' ? 'english' : 'korean';
+              setCurrentLanguage(newLang);
+              console.log('🔄 언어 변경:', currentLanguage, '→', newLang);
+            }}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 border-2 ${
+              currentLanguage === 'korean' 
+                ? 'bg-blue-500 hover:bg-blue-600 text-white border-blue-600' 
+                : 'bg-green-500 hover:bg-green-600 text-white border-green-600'
+            }`}
+            title="클릭하여 언어 전환"
+          >
+            {currentLanguage === 'korean' ? '🇰🇷 한국어' : '🇺🇸 English'}
+          </button>
         )}
         
         <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${

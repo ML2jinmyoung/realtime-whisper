@@ -8,13 +8,14 @@ interface UseWhisperSTTReturn {
   error: string | null;
   loadingProgress: number;
   modelInfo: ModelInfo | null;
-  transcribeAudio: (audioBlob: Blob, timestamp: number) => Promise<STTResult>;
+  transcribeAudio: (audioBlob: Blob, timestamp: number, language?: string) => Promise<STTResult>;
   initializeModel: () => Promise<void>;
 }
 
 interface QueueItem {
   audioBlob: Blob;
   timestamp: number;
+  language: string;
   resolve: (result: STTResult) => void;
   reject: (error: Error) => void;
 }
@@ -162,7 +163,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
 
     while (processingQueueRef.current.length > 0 && workerRef.current) {
       const queueItem = processingQueueRef.current[0];
-      const { audioBlob, timestamp, resolve, reject } = queueItem;
+      const { audioBlob, timestamp, language, resolve, reject } = queueItem;
 
       try {
         console.log('STT 처리 시작:', new Date(timestamp).toLocaleTimeString());
@@ -181,7 +182,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
           data: {
             audioData: audioData,
             options: {
-              language: 'korean',
+              language: language,
               task: 'transcribe',
               chunk_length_s: 30,
               stride_length_s: 5,
@@ -243,7 +244,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
     }
   }, [processAudioQueue]);
 
-  const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number): Promise<STTResult> => {
+  const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number, language: string = 'korean'): Promise<STTResult> => {
     if (!workerRef.current || !isModelReady) {
       throw new Error('모델이 아직 로딩되지 않았습니다');
     }
@@ -252,6 +253,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
       processingQueueRef.current.push({
         audioBlob,
         timestamp,
+        language,
         resolve,
         reject
       });

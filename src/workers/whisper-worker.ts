@@ -97,8 +97,14 @@ self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
         } else if (message.type === "transcribe") {
             // STT 요청
             if (!transcriber) {
-                throw new Error("Transcriber not initialized");
+                console.error("❌ Transcriber not available, current state:", {
+                    transcriber,
+                    currentModel
+                });
+                throw new Error("Transcriber not initialized. Please wait for model loading to complete.");
             }
+            
+            console.log("✅ Transcriber is ready, processing audio...");
             
             const audioData = message.data?.audioData;
             const options = message.data?.options;
@@ -332,13 +338,24 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
             });
         } else {
             // 지정된 언어로 처리
-            const lang = language === 'korean' ? 'ko' : language;
-            console.log("🎯 Processing with language:", lang);
-            result = await transcriber(audio, {
-                task: subtask,
-                language: lang,
-                return_timestamps: false,
-            });
+            const lang = language === 'korean' ? 'ko' : language === 'english' ? 'en' : language;
+            console.log("🎯 Processing with specified language:", lang);
+            
+            try {
+                result = await transcriber(audio, {
+                    task: subtask,
+                    language: lang,
+                    return_timestamps: false,
+                });
+                console.log("✅ Language-specific transcription completed");
+            } catch (langError) {
+                console.warn("⚠️ Language-specific transcription failed, trying auto-detect");
+                // 지정된 언어로 실패하면 자동 감지로 fallback
+                result = await transcriber(audio, {
+                    task: subtask,
+                    return_timestamps: false,
+                });
+            }
         }
         
         return {
