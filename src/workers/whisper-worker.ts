@@ -337,25 +337,16 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
                 return_timestamps: false,
             });
         } else {
-            // 지정된 언어로 처리
+            // 지정된 언어로 처리 (fallback 제거)
             const lang = language === 'korean' ? 'ko' : language === 'english' ? 'en' : language;
-            console.log("🎯 Processing with specified language:", lang);
+            console.log("🎯 Processing with specified language:", lang, "| Original:", language);
             
-            try {
-                result = await transcriber(audio, {
-                    task: subtask,
-                    language: lang,
-                    return_timestamps: false,
-                });
-                console.log("✅ Language-specific transcription completed");
-            } catch (langError) {
-                console.warn("⚠️ Language-specific transcription failed, trying auto-detect");
-                // 지정된 언어로 실패하면 자동 감지로 fallback
-                result = await transcriber(audio, {
-                    task: subtask,
-                    return_timestamps: false,
-                });
-            }
+            result = await transcriber(audio, {
+                task: subtask,
+                language: lang,
+                return_timestamps: false,
+            });
+            console.log("✅ Language-specific transcription completed with:", lang);
         }
         
         return {

@@ -8,6 +8,7 @@ function App(): JSX.Element {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const [currentLanguage, setCurrentLanguage] = useState<'korean' | 'english'>('korean');
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   
   const processingCountRef = useRef<number>(0);
   const transcriptsEndRef = useRef<HTMLDivElement>(null);
@@ -57,6 +58,7 @@ function App(): JSX.Element {
     try {
       processingCountRef.current++;
       
+      console.log(`🌐 STT 처리 - 언어: ${currentLanguage}, 세그먼트: ${segmentNumber}`);
       const result = await transcribeAudio(audioBlob, segmentStartTime, currentLanguage);
       
       setTranscripts(prev => {
@@ -94,15 +96,18 @@ function App(): JSX.Element {
         return [...prev, errorTranscript].sort((a, b) => a.timestamp - b.timestamp);
       });
     }
-  }, [isModelReady, transcribeAudio, recordingStartTime]);
+  }, [isModelReady, transcribeAudio, recordingStartTime, currentLanguage]);
 
   const {
     isRecording,
     error: recordingError,
     vadStatus,
     segmentCount,
+    audioLevel,
     startRecording,
-    stopRecording
+    stopRecording,
+    pauseRecording,
+    resumeRecording
   } = useVADRecording(handleAudioSegment);
 
   const handleStartRecording = useCallback(async () => {
@@ -124,10 +129,24 @@ function App(): JSX.Element {
     await startRecording();
   }, [isModelReady, startRecording]);
 
+  const handlePauseRecording = useCallback(() => {
+    pauseRecording();
+    setIsPaused(true);
+    console.log('⏸️ 녹음 일시정지');
+  }, [pauseRecording]);
+
+  const handleResumeRecording = useCallback(() => {
+    resumeRecording();
+    setIsPaused(false);
+    console.log('▶️ 녹음 재개');
+  }, [resumeRecording]);
+
   const handleStopRecording = useCallback(() => {
     stopRecording();
     setRecordingStartTime(null);
+    setIsPaused(false);
     processingCountRef.current = 0;
+    console.log('⏹️ 녹음 종료');
   }, [stopRecording]);
 
   // 자동 스크롤 기능
@@ -194,6 +213,10 @@ function App(): JSX.Element {
     }
     
     if (isRecording) {
+      if (isPaused) {
+        return '⏸️ 녹음 일시정지됨';
+      }
+      
       switch (vadStatus) {
         case 'listening':
           return '🎧 음성 대기 중...';
@@ -217,53 +240,110 @@ function App(): JSX.Element {
         회의록 STT 앱 (VAD 기반)
       </h1>
       
-      <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-        <button
-          className={`px-6 py-3 rounded-lg font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-            isRecording 
-              ? 'bg-red-500 hover:bg-red-600' 
-              : 'bg-green-500 hover:bg-green-600'
-          }`}
-          onClick={isRecording ? handleStopRecording : handleStartRecording}
-          disabled={!isModelReady && !sttError}
+      {/* 녹음 컨트롤 섹션 */}
+      <div className="mb-4 p-6 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl">
+        <div className="flex flex-col items-center gap-6">
+          {/* 녹음 버튼들 */}
+          <div className="flex items-center justify-center gap-4">
+            {!isRecording ? (
+              <button
+                className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleStartRecording}
+                disabled={!isModelReady && !sttError}
+              >
+                <div className="w-4 h-4 bg-white rounded-full"></div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-4">
+                <button
+                  className={`w-12 h-12 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center ${
+                    isPaused 
+                      ? 'bg-green-500 hover:bg-green-600' 
+                      : 'bg-yellow-500 hover:bg-yellow-600'
+                  }`}
+                  onClick={isPaused ? handleResumeRecording : handlePauseRecording}
+                >
+                  {isPaused ? (
+                    <div className="w-0 h-0 border-l-[8px] border-l-white border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent ml-1"></div>
+                  ) : (
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-4 bg-white rounded-sm"></div>
+                      <div className="w-1.5 h-4 bg-white rounded-sm"></div>
+                    </div>
+                  )}
+                </button>
+                
+                <button
+                  className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center relative"
+                  onClick={handleStopRecording}
+                >
+                  <div className="w-4 h-4 bg-white rounded-sm"></div>
+                  {isRecording && !isPaused && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-400 rounded-full animate-pulse"></div>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 녹음 정보 */}
+          {isRecording && (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <div>
+                  감지된 음성: <span className="font-medium text-blue-600">{segmentCount}개</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">🎤</span>
+                  <div className="flex items-end gap-0.5 h-6">
+                    {[...Array(8)].map((_, i) => (
+                      <div
+                        key={i}
+                        className={`w-1 transition-all duration-200 rounded-t-sm ${
+                          audioLevel > (i * 12.5) 
+                            ? i < 3 ? 'bg-green-500' : i < 6 ? 'bg-yellow-500' : 'bg-red-500'
+                            : 'bg-gray-300'
+                        }`}
+                        style={{ height: `${Math.max(4, (i + 1) * 2)}px` }}
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 설정 및 상태 섹션 */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6 p-3 bg-white border border-gray-200 rounded-lg">
+        <div 
+          className="flex bg-gray-200 rounded-lg p-1 cursor-pointer"
+          onClick={() => {
+            const newLang = currentLanguage === 'korean' ? 'english' : 'korean';
+            setCurrentLanguage(newLang);
+            console.log('🔄 언어 변경:', currentLanguage, '→', newLang);
+          }}
         >
-          {isRecording ? '녹음 중지' : '녹음 시작'}
-        </button>
-        
-        {isRecording && (
-          <div className="text-sm text-gray-600">
-            감지된 음성: <span className="font-medium text-blue-600">{segmentCount}개</span>
+          <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+            currentLanguage === 'korean' 
+              ? 'bg-blue-500 text-white shadow-sm' 
+              : 'text-gray-600 hover:text-gray-800'
+          }`}>
+            🇰🇷 한국어
           </div>
-        )}
-        
-        {isRecording && (
-          <div 
-            className="flex bg-gray-200 rounded-lg p-1 cursor-pointer"
-            onClick={() => {
-              const newLang = currentLanguage === 'korean' ? 'english' : 'korean';
-              setCurrentLanguage(newLang);
-              console.log('🔄 언어 변경:', currentLanguage, '→', newLang);
-            }}
-          >
-            <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
-              currentLanguage === 'korean' 
-                ? 'bg-blue-500 text-white shadow-sm' 
-                : 'text-gray-600 hover:text-gray-800'
-            }`}>
-              🇰🇷 한국어
-            </div>
-            <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
-              currentLanguage === 'english' 
-                ? 'bg-blue-500 text-white shadow-sm' 
-                : 'text-gray-600 hover:text-gray-800'
-            }`}>
-              🇺🇸 English
-            </div>
+          <div className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
+            currentLanguage === 'english' 
+              ? 'bg-blue-500 text-white shadow-sm' 
+              : 'text-gray-600 hover:text-gray-800'
+          }`}>
+            🇺🇸 English
           </div>
-        )}
+        </div>
         
         <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${
           !isModelReady || sttError || recordingError ? 'bg-gray-100 text-gray-600' :
+          isRecording && isPaused ? 'bg-yellow-100 text-yellow-700' :
           isRecording ? 'bg-red-100 text-red-700' :
           isProcessing ? 'bg-yellow-100 text-yellow-700' :
           'bg-green-100 text-green-700'
