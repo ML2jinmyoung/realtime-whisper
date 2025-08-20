@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useVADRecording } from './useVADRecording';
 import { useWhisperSTT } from './useWhisperSTT';
+import { Transcript } from './types';
 import './index.css';
 
-function App() {
-  const [transcripts, setTranscripts] = useState([]);
-  const [recordingStartTime, setRecordingStartTime] = useState(null);
+function App(): JSX.Element {
+  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   
-  const processingCountRef = useRef(0);
+  const processingCountRef = useRef<number>(0);
   
   const {
     isModelLoading,
@@ -19,7 +20,7 @@ function App() {
     transcribeAudio
   } = useWhisperSTT();
 
-  const handleAudioSegment = useCallback(async (audioBlob, segmentStartTime) => {
+  const handleAudioSegment = useCallback(async (audioBlob: Blob, segmentStartTime: number): Promise<void> => {
     if (!isModelReady) {
       console.warn('모델이 아직 준비되지 않았습니다');
       return;
@@ -53,9 +54,10 @@ function App() {
       console.error(`음성 세그먼트 ${segmentNumber} 처리 실패:`, error);
       
       setTranscripts(prev => {
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
         const errorTranscript = {
           id: segmentStartTime,
-          text: `[처리 오류: ${error.message}]`,
+          text: `[처리 오류: ${errorMessage}]`,
           timestamp: segmentStartTime,
           segmentNumber: segmentNumber,
           processedAt: Date.now(),
@@ -95,7 +97,7 @@ function App() {
     processingCountRef.current = 0;
   }, [stopRecording]);
 
-  const formatElapsedTime = useCallback((timestamp, startTime) => {
+  const formatElapsedTime = useCallback((timestamp: number, startTime: number | null): string => {
     if (!startTime) return '';
     const elapsed = Math.floor((timestamp - startTime) / 1000);
     const minutes = Math.floor(elapsed / 60);
@@ -124,7 +126,8 @@ function App() {
     
     sortedTranscripts.forEach((transcript) => {
       const elapsedTime = formatElapsedTime(transcript.timestamp, recordingStartTime);
-      content += `[음성 #${transcript.segmentNumber}] ${elapsedTime}\n`;
+      const actualTime = new Date(transcript.timestamp).toLocaleTimeString('ko-KR');
+      content += `[${elapsedTime}] (${actualTime})\n`;
       content += `${transcript.text || '(텍스트가 비어있습니다)'}\n\n`;
     });
 
@@ -235,7 +238,7 @@ function App() {
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">회의 내용</h2>
         
-        <div className="max-h-96 overflow-y-auto space-y-2">
+        <div className="max-h-96 overflow-y-auto">
           {transcripts.length === 0 && !isRecording && (
             <p className="text-gray-500 italic text-center py-8">
               녹음 버튼을 눌러 회의를 시작하세요.
@@ -248,41 +251,23 @@ function App() {
             </p>
           )}
 
-          {transcripts.map((transcript) => (
-            <div 
-              key={transcript.id} 
-              className={`bg-white p-3 rounded-lg border-l-4 shadow-sm ${
-                transcript.isError ? 'border-l-red-500' : 'border-l-blue-500'
-              }`}
-            >
-              <div className="text-xs text-gray-500 mb-1 flex flex-wrap items-center gap-2">
-                <span className="font-medium">
-                  음성 #{transcript.segmentNumber} ({formatElapsedTime(transcript.timestamp, recordingStartTime)})
+          <div className="text-gray-800 leading-relaxed">
+            {transcripts.map((transcript) => (
+              <div key={transcript.id} className="mb-2">
+                <span className="text-xs text-gray-500 mr-2">
+                  [{formatElapsedTime(transcript.timestamp, recordingStartTime)}]
                 </span>
-                {transcript.processedAt && (
-                  <span className="text-gray-400">
-                    • 처리완료: {new Date(transcript.processedAt).toLocaleTimeString()}
-                  </span>
-                )}
+                <span className={transcript.isError ? 'text-red-600 italic' : ''}>
+                  {transcript.text || '(텍스트가 비어있습니다)'}
+                </span>
               </div>
-              <div 
-                className={`text-sm leading-relaxed ${
-                  transcript.isError 
-                    ? 'text-red-600 italic' 
-                    : 'text-gray-800'
-                }`}
-              >
-                {transcript.text || '(텍스트가 비어있습니다)'}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
           
           {isRecording && isProcessing && (
-            <div className="bg-white p-3 rounded-lg border-l-4 border-l-yellow-500 shadow-sm">
-              <div className="flex items-center gap-2 text-sm text-yellow-700">
-                <div className="spinner"></div>
-                STT 처리 중...
-              </div>
+            <div className="flex items-center gap-2 text-sm text-yellow-700 mt-4">
+              <div className="spinner"></div>
+              STT 처리 중...
             </div>
           )}
         </div>

@@ -1,14 +1,34 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { STTResult, ModelInfo, WorkerMessage, WorkerResponse } from './types';
 
-export const useWhisperSTT = () => {
+interface UseWhisperSTTReturn {
+  isModelLoading: boolean;
+  isModelReady: boolean;
+  isProcessing: boolean;
+  error: string | null;
+  loadingProgress: number;
+  modelInfo: ModelInfo | null;
+  transcribeAudio: (audioBlob: Blob, timestamp: number) => Promise<STTResult>;
+  initializeModel: () => Promise<void>;
+}
+
+interface QueueItem {
+  audioBlob: Blob;
+  timestamp: number;
+  resolve: (result: STTResult) => void;
+  reject: (error: Error) => void;
+}
+
+export const useWhisperSTT = (): UseWhisperSTTReturn => {
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [isModelReady, setIsModelReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState(null);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   
-  const workerRef = useRef(null);
-  const processingQueueRef = useRef([]);
+  const workerRef = useRef<Worker | null>(null);
+  const processingQueueRef = useRef<QueueItem[]>([]);
   const isProcessingRef = useRef(false);
 
   const initializeModel = useCallback(async () => {
@@ -22,11 +42,11 @@ export const useWhisperSTT = () => {
       console.log('Web Worker와 Whisper Turbo 모델 초기화 중...');
       
       // Web Worker 생성 - npm으로 설치된 transformers.js 사용
-      const worker = new Worker(new URL('./workers/whisper-worker.js', import.meta.url), {
+      const worker = new Worker(new URL('./workers/whisper-worker.ts', import.meta.url), {
         type: 'module'
       });
       
-      worker.onmessage = (e) => {
+      worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const { type, status, message, progress, text, timestamp } = e.data;
         
         switch (type) {
@@ -38,6 +58,7 @@ export const useWhisperSTT = () => {
               setIsModelReady(true);
               setIsModelLoading(false);
               setLoadingProgress(100);
+              setModelInfo({ description: 'Whisper Large V3 Turbo' });
               console.log(message);
             }
             break;
@@ -48,15 +69,17 @@ export const useWhisperSTT = () => {
             break;
             
           case 'result':
-            handleTranscriptionResult({ text, timestamp });
+            if (text !== undefined && timestamp !== undefined) {
+              handleTranscriptionResult({ text, timestamp });
+            }
             break;
             
           case 'error':
             console.error('Worker error:', message);
             if (timestamp) {
-              handleTranscriptionError(new Error(message), timestamp);
+              handleTranscriptionError(new Error(message || '알 수 없는 오류'), timestamp);
             } else {
-              setError(message);
+              setError(message || '알 수 없는 오류');
               setIsModelLoading(false);
             }
             break;
@@ -66,7 +89,7 @@ export const useWhisperSTT = () => {
         }
       };
 
-      worker.onerror = (error) => {
+      worker.onerror = (error: ErrorEvent) => {
         console.error('Worker error details:', {
           message: error.message,
           filename: error.filename,
@@ -81,19 +104,21 @@ export const useWhisperSTT = () => {
       workerRef.current = worker;
       
       // Whisper Turbo 모델 로드 요청
-      worker.postMessage({
+      const loadMessage: WorkerMessage = {
         type: 'load-model',
         model: 'onnx-community/whisper-large-v3-turbo_timestamped'
-      });
+      };
+      worker.postMessage(loadMessage);
       
     } catch (err) {
       console.error('Worker 초기화 실패:', err);
-      setError('Worker 초기화 실패: ' + (err.message || '알 수 없는 오류'));
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
+      setError('Worker 초기화 실패: ' + errorMessage);
       setIsModelLoading(false);
     }
   }, []);
 
-  const audioBufferFromBlob = useCallback(async (blob) => {
+  const audioBufferFromBlob = useCallback(async (blob: Blob): Promise<Float32Array> => {
     const arrayBuffer = await blob.arrayBuffer();
     const audioContext = new AudioContext({ sampleRate: 16000 });
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -136,7 +161,8 @@ export const useWhisperSTT = () => {
     setIsProcessing(true);
 
     while (processingQueueRef.current.length > 0 && workerRef.current) {
-      const { audioBlob, timestamp, resolve, reject } = processingQueueRef.current[0];
+      const queueItem = processingQueueRef.current[0];
+      const { audioBlob, timestamp, resolve, reject } = queueItem;
 
       try {
         console.log('STT 처리 시작:', new Date(timestamp).toLocaleTimeString());
@@ -150,7 +176,7 @@ export const useWhisperSTT = () => {
         }
 
         // Worker로 transcription 요청 전송
-        workerRef.current.postMessage({
+        const transcribeMessage: WorkerMessage = {
           type: 'transcribe',
           data: {
             audioData: audioData,
@@ -163,13 +189,15 @@ export const useWhisperSTT = () => {
               timestamp: timestamp
             }
           }
-        });
+        };
+        workerRef.current.postMessage(transcribeMessage);
 
         break; // Worker에서 결과를 기다리기 위해 루프 중단
         
       } catch (err) {
         console.error('STT 처리 오류:', err);
-        reject(err);
+        const error = err instanceof Error ? err : new Error('알 수 없는 오류');
+        reject(error);
         processingQueueRef.current.shift();
       }
     }
@@ -180,7 +208,7 @@ export const useWhisperSTT = () => {
     }
   }, [audioBufferFromBlob]);
 
-  const handleTranscriptionResult = useCallback(({ text, timestamp }) => {
+  const handleTranscriptionResult = useCallback(({ text, timestamp }: { text: string; timestamp: number }) => {
     const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
     if (queueItem) {
       queueItem.resolve({ text, timestamp });
@@ -198,7 +226,7 @@ export const useWhisperSTT = () => {
     }
   }, [processAudioQueue]);
 
-  const handleTranscriptionError = useCallback((error, timestamp) => {
+  const handleTranscriptionError = useCallback((error: Error, timestamp: number) => {
     const queueItem = processingQueueRef.current.find(item => item.timestamp === timestamp);
     if (queueItem) {
       queueItem.reject(error);
@@ -215,12 +243,12 @@ export const useWhisperSTT = () => {
     }
   }, [processAudioQueue]);
 
-  const transcribeAudio = useCallback(async (audioBlob, timestamp) => {
+  const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number): Promise<STTResult> => {
     if (!workerRef.current || !isModelReady) {
       throw new Error('모델이 아직 로딩되지 않았습니다');
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<STTResult>((resolve, reject) => {
       processingQueueRef.current.push({
         audioBlob,
         timestamp,
@@ -250,6 +278,7 @@ export const useWhisperSTT = () => {
     isProcessing,
     error,
     loadingProgress,
+    modelInfo,
     transcribeAudio,
     initializeModel
   };

@@ -1,27 +1,34 @@
 /* eslint-env worker */
 /* eslint-disable no-restricted-globals */
 import { pipeline } from '@huggingface/transformers';
+import { WorkerMessage, WorkerResponse } from '../types';
 
-let transcriber = null;
-let currentModel = null;
+let transcriber: any = null;
+let currentModel: string | null = null;
 
-self.addEventListener("message", async (event) => {
+self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
     const message = event.data;
     
     try {
         if (message.type === "load-model") {
             console.log("🚀 Starting model loading:", message.model);
-            currentModel = message.model;
+            currentModel = message.model || null;
+            
+            interface ModelCandidate {
+                name: string;
+                description: string;
+                size: 'large' | 'turbo';
+            }
             
             // 모델 후보 리스트 (큰 모델에서 작은 모델로 폴백)
-            const modelCandidates = [
-                { name: currentModel, description: '요청된 모델', size: 'large' },
+            const modelCandidates: ModelCandidate[] = [
+                ...(currentModel ? [{ name: currentModel, description: '요청된 모델', size: 'large' as const }] : []),
                 { name: 'onnx-community/whisper-large-v3-turbo', description: '큰 모델', size: 'turbo' },
                 { name: 'onnx-community/whisper-large-v3-turbo_timestamped', description: '기본 모델 ', size: 'turbo' }
             ];
             
             let modelLoaded = false;
-            let lastError = null;
+            let lastError: Error | null = null;
             
             for (const model of modelCandidates) {
                 if (modelLoaded) break;
@@ -30,17 +37,18 @@ self.addEventListener("message", async (event) => {
                     console.log(`🔄 Attempting to load: ${model.description} (${model.name})`);
                     currentModel = model.name;
                     
-                    self.postMessage({
+                    const loadingMessage: WorkerResponse = {
                         type: 'loading',
                         status: 'downloading',
                         progress: 0,
                         message: `시도 중: ${model.description}`
-                    });
+                    };
+                    self.postMessage(loadingMessage);
                     
                     // 타임아웃 설정 (모델 크기에 따라 조정)
                     const timeoutMs = model.size === 'large' ? 10 * 60 * 1000 : 5 * 60 * 1000; // 대형 모델 10분, 소형 모델 5분
                     
-                    const timeoutPromise = new Promise((_, reject) => {
+                    const timeoutPromise = new Promise<never>((_, reject) => {
                         setTimeout(() => reject(new Error(`타임아웃: ${model.description} 로딩이 ${timeoutMs/60000}분을 초과했습니다`)), timeoutMs);
                     });
                     
@@ -55,12 +63,13 @@ self.addEventListener("message", async (event) => {
                         modelLoaded = true;
                         
                         // 최종 완료 메시지 - ready 상태로 변경
-                        self.postMessage({ 
+                        const readyMessage: WorkerResponse = { 
                             type: 'loading',
                             status: 'ready',
                             progress: 100,
                             message: `${model.description} 로딩 완료 (${result.device})`
-                        });
+                        };
+                        self.postMessage(readyMessage);
                         
                         break;
                     } else {
@@ -68,11 +77,12 @@ self.addEventListener("message", async (event) => {
                     }
                     
                 } catch (modelError) {
-                    console.error(`❌ Failed to load ${model.description}:`, modelError.message);
-                    lastError = modelError;
+                    const error = modelError instanceof Error ? modelError : new Error('알 수 없는 오류');
+                    console.error(`❌ Failed to load ${model.description}:`, error.message);
+                    lastError = error;
                     
                     if (model === modelCandidates[modelCandidates.length - 1]) {
-                        throw new Error(`모든 모델 로딩 실패. 마지막 오류: ${modelError.message}`);
+                        throw new Error(`모든 모델 로딩 실패. 마지막 오류: ${error.message}`);
                     } else {
                         console.log(`🔄 Trying next smaller model...`);
                         continue;
@@ -91,7 +101,7 @@ self.addEventListener("message", async (event) => {
             }
             
             const audioData = message.data?.audioData;
-            const options = message.data?.options || {};
+            const options = message.data?.options;
             
             if (!audioData) {
                 throw new Error("Audio data not provided");
@@ -99,41 +109,57 @@ self.addEventListener("message", async (event) => {
             
             console.log("🎵 Starting transcription, audio length:", audioData.length);
             
-            self.postMessage({
+            const transcribingMessage: WorkerResponse = {
                 type: 'transcribing',
                 message: 'STT 처리 중...'
-            });
+            };
+            self.postMessage(transcribingMessage);
             
             const result = await transcribe({
                 audio: audioData,
-                model: currentModel,
-                subtask: options.task || 'transcribe',
-                language: options.language || 'ko',
-                timestamp: options.timestamp
+                model: currentModel || 'onnx-community/whisper-large-v3-turbo',
+                subtask: options?.task || 'transcribe',
+                language: options?.language,
+                timestamp: options?.timestamp || Date.now()
             });
             
             if (result) {
                 console.log("✅ Transcription completed:", result.text);
-                self.postMessage({
+                const resultMessage: WorkerResponse = {
                     type: "result",
                     text: result.text,
                     timestamp: result.timestamp
-                });
+                };
+                self.postMessage(resultMessage);
             }
         }
     } catch (error) {
         console.error("💥 Worker error:", error);
         // 메시지에 포함된 timestamp 또는 옵션 내부 timestamp를 에러에 포함하여 상위 큐가 멈추지 않게 함
-        const fallbackTimestamp = message?.data?.options?.timestamp || message?.timestamp;
-        self.postMessage({
+        const fallbackTimestamp = message?.data?.options?.timestamp;
+        const errorMsg = error instanceof Error ? error.message : '알 수 없는 오류';
+        const errorMessage: WorkerResponse = {
             type: "error",
-            message: error.message,
+            message: errorMsg,
             timestamp: fallbackTimestamp
-        });
+        };
+        self.postMessage(errorMessage);
     }
 });
 
-async function tryLoadModel(model) {
+interface ModelCandidate {
+    name: string;
+    description: string;
+    size: 'large' | 'turbo';
+}
+
+interface LoadModelResult {
+    success: boolean;
+    transcriber: any;
+    device: string;
+}
+
+async function tryLoadModel(model: ModelCandidate): Promise<LoadModelResult> {
     const startTime = Date.now();
     let progressCount = 0;
     let isCompleted = false;
@@ -144,16 +170,17 @@ async function tryLoadModel(model) {
         if (!isCompleted) {
             console.log('⏰ 90초 타임아웃 - 강제 완료');
             isCompleted = true;
-            self.postMessage({
+            const timeoutMessage: WorkerResponse = {
                 type: 'loading',
                 status: 'ready',
                 progress: 100,
                 message: `${model.description}: 타임아웃 완료`
-            });
+            };
+            self.postMessage(timeoutMessage);
         }
     }, 90 * 1000);
     
-    const progress_callback = (data) => {
+    const progress_callback = (data: any) => {
         // 이미 완료되었으면 완전히 무시
         if (isCompleted) {
             return;
@@ -167,12 +194,13 @@ async function tryLoadModel(model) {
             console.log(`🛑 콜백 수 초과 (${maxCallbacks}) - 강제 완료`);
             isCompleted = true;
             clearTimeout(forceCompleteTimer);
-            self.postMessage({
+            const forceCompleteMessage: WorkerResponse = {
                 type: 'loading',
                 status: 'ready',
                 progress: 100,
                 message: `${model.description}: 강제 완료`
-            });
+            };
+            self.postMessage(forceCompleteMessage);
             return;
         }
         
@@ -185,12 +213,13 @@ async function tryLoadModel(model) {
         if (progressCount % 20 === 0 || progressCount === 1 || data.progress === 1.0) {
             let progress = Math.min(98, Math.round((data.progress || progressCount/maxCallbacks) * 100));
             
-            self.postMessage({
+            const progressMessage: WorkerResponse = {
                 type: 'loading',
                 status: 'downloading',
                 progress: progress,
                 message: `${model.description}: ${progress}% (${Math.round(elapsed/1000)}초)`
-            });
+            };
+            self.postMessage(progressMessage);
         }
     };
     
@@ -211,17 +240,19 @@ async function tryLoadModel(model) {
         clearTimeout(forceCompleteTimer);
         console.log(`✅ WebGPU success in ${Date.now() - startTime}ms`);
         
-        self.postMessage({
+        const webgpuCompleteMessage: WorkerResponse = {
             type: 'loading',
             status: 'ready',
             progress: 100,
             message: `${model.description}: WebGPU 완료!`
-        });
+        };
+        self.postMessage(webgpuCompleteMessage);
         
         return { success: true, transcriber, device: 'WebGPU' };
         
     } catch (webgpuError) {
-        console.warn("❌ WebGPU failed:", webgpuError.message);
+        const error = webgpuError instanceof Error ? webgpuError : new Error('알 수 없는 오류');
+        console.warn("❌ WebGPU failed:", error.message);
         
         try {
             console.log("🔄 Trying CPU fallback...");
@@ -241,12 +272,13 @@ async function tryLoadModel(model) {
             clearTimeout(forceCompleteTimer);
             console.log(`✅ CPU success in ${Date.now() - startTime}ms`);
             
-            self.postMessage({
+            const cpuCompleteMessage: WorkerResponse = {
                 type: 'loading',
                 status: 'ready',
                 progress: 100,
                 message: `${model.description}: CPU 완료!`
-            });
+            };
+            self.postMessage(cpuCompleteMessage);
             
             return { success: true, transcriber, device: 'CPU' };
             
@@ -254,12 +286,26 @@ async function tryLoadModel(model) {
             isCompleted = true;
             clearTimeout(forceCompleteTimer);
             console.error("❌ Both WebGPU and CPU failed");
-            throw cpuError;
+            const error = cpuError instanceof Error ? cpuError : new Error('알 수 없는 오류');
+            throw error;
         }
     }
 }
 
-const transcribe = async ({ audio, model, subtask = "transcribe", language = "ko", timestamp }) => {
+interface TranscribeOptions {
+    audio: Float32Array;
+    model: string;
+    subtask?: string;
+    language?: string | null;
+    timestamp: number;
+}
+
+interface TranscribeResult {
+    text: string;
+    timestamp: number;
+}
+
+const transcribe = async ({ audio, model, subtask = "transcribe", language = null, timestamp }: TranscribeOptions): Promise<TranscribeResult> => {
     try {
         // audio가 Float32Array인지 확인
         if (!(audio instanceof Float32Array)) {
@@ -277,7 +323,7 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = "ko
         // STT 실행
         const result = await transcriber(audio, {
             task: subtask,
-            language: language,
+            language: language === 'korean' ? 'ko' : language,
             return_timestamps: false,
         });
         

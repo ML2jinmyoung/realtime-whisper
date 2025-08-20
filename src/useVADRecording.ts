@@ -1,20 +1,32 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MicVAD } from '@ricky0123/vad-web';
+import { VADStatus } from './types';
 
-export const useVADRecording = (onAudioSegment) => {
-  const [isRecording, setIsRecording] = useState(false);
-  const [error, setError] = useState(null);
-  const [vadStatus, setVadStatus] = useState('idle'); // idle, listening, speaking, processing
+interface UseVADRecordingReturn {
+  isRecording: boolean;
+  error: string | null;
+  vadStatus: VADStatus;
+  segmentCount: number;
+  startRecording: () => Promise<void>;
+  stopRecording: () => void;
+}
+
+type OnAudioSegmentCallback = (audioBlob: Blob, timestamp: number) => Promise<void>;
+
+export const useVADRecording = (onAudioSegment: OnAudioSegmentCallback): UseVADRecordingReturn => {
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [vadStatus, setVadStatus] = useState<VADStatus>('idle'); // idle, listening, speaking, processing
   
-  const vadRef = useRef(null);
-  const streamRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const segmentStartTimeRef = useRef(0);
-  const segmentCountRef = useRef(0);
+  const vadRef = useRef<any>(null); // MicVAD 타입이 복잡하므로 any 사용
+  const streamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const segmentStartTimeRef = useRef<number>(0);
+  const segmentCountRef = useRef<number>(0);
 
   // VAD 초기화
-  const initializeVAD = useCallback(async (stream) => {
+  const initializeVAD = useCallback(async (stream: MediaStream): Promise<void> => {
     try {
       console.log('VAD 초기화 중...');
       
@@ -34,7 +46,7 @@ export const useVADRecording = (onAudioSegment) => {
           }
         },
         
-        onSpeechEnd: (audio) => {
+        onSpeechEnd: (audio: Float32Array) => {
           console.log('🔇 음성 종료 감지');
           setVadStatus('processing');
           
@@ -65,7 +77,8 @@ export const useVADRecording = (onAudioSegment) => {
       
     } catch (err) {
       console.error('VAD 초기화 실패:', err);
-      setError('음성 감지 초기화 실패: ' + err.message);
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
+      setError('음성 감지 초기화 실패: ' + errorMessage);
     }
   }, []);
 
@@ -130,7 +143,8 @@ export const useVADRecording = (onAudioSegment) => {
       setIsRecording(true);
       
     } catch (err) {
-      setError('녹음 시작 실패: ' + err.message);
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
+      setError('녹음 시작 실패: ' + errorMessage);
       console.error('Error starting VAD recording:', err);
     }
   }, [onAudioSegment, initializeVAD]);
