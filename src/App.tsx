@@ -45,6 +45,8 @@ function App(): JSX.Element {
           recordingStartTime: recordingStartTime
         };
         
+        console.log('📝 New transcript:', newTranscript);
+        
         return [...prev, newTranscript].sort((a, b) => a.timestamp - b.timestamp);
       });
       
@@ -98,7 +100,10 @@ function App(): JSX.Element {
   }, [stopRecording]);
 
   const formatElapsedTime = useCallback((timestamp: number, startTime: number | null): string => {
-    if (!startTime) return '';
+    if (!startTime) {
+      // startTime이 없으면 절대 시간 표시
+      return new Date(timestamp).toLocaleTimeString('ko-KR');
+    }
     const elapsed = Math.floor((timestamp - startTime) / 1000);
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
@@ -125,7 +130,7 @@ function App(): JSX.Element {
     const sortedTranscripts = [...transcripts].sort((a, b) => a.timestamp - b.timestamp);
     
     sortedTranscripts.forEach((transcript) => {
-      const elapsedTime = formatElapsedTime(transcript.timestamp, recordingStartTime);
+      const elapsedTime = formatElapsedTime(transcript.timestamp, transcript.recordingStartTime);
       const actualTime = new Date(transcript.timestamp).toLocaleTimeString('ko-KR');
       content += `[${elapsedTime}] (${actualTime})\n`;
       content += `${transcript.text || '(텍스트가 비어있습니다)'}\n\n`;
@@ -255,7 +260,7 @@ function App(): JSX.Element {
             {transcripts.map((transcript) => (
               <div key={transcript.id} className="mb-2">
                 <span className="text-xs text-gray-500 mr-2">
-                  [{formatElapsedTime(transcript.timestamp, recordingStartTime)}]
+                  [{formatElapsedTime(transcript.timestamp, transcript.recordingStartTime)}]
                 </span>
                 <span className={transcript.isError ? 'text-red-600 italic' : ''}>
                   {transcript.text || '(텍스트가 비어있습니다)'}

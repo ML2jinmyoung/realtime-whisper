@@ -320,12 +320,26 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
 
         console.log("🎵 Processing audio data, length:", audio.length, "language:", language);
 
-        // STT 실행
-        const result = await transcriber(audio, {
-            task: subtask,
-            language: language === 'korean' ? 'ko' : language,
-            return_timestamps: false,
-        });
+        // 한국어 기본, 영어 지원
+        let result;
+        
+        if (!language) {
+            // language가 null이면 자동 감지
+            console.log("🎯 Auto-detecting language...");
+            result = await transcriber(audio, {
+                task: subtask,
+                return_timestamps: false,
+            });
+        } else {
+            // 지정된 언어로 처리
+            const lang = language === 'korean' ? 'ko' : language;
+            console.log("🎯 Processing with language:", lang);
+            result = await transcriber(audio, {
+                task: subtask,
+                language: lang,
+                return_timestamps: false,
+            });
+        }
         
         return {
             text: result.text?.trim() || '',
