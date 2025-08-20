@@ -6,7 +6,7 @@ import './index.css';
 function App() {
   const [transcripts, setTranscripts] = useState([]);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
-  https://chatbot.kct.co.kr/database
+  
   const processingCountRef = useRef(0);
   
   const {
