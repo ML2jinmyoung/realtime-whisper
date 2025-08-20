@@ -1,13 +1,12 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useAudioRecording } from './useAudioRecording';
+import { useVADRecording } from './useVADRecording';
 import { useWhisperSTT } from './useWhisperSTT';
 import './index.css';
 
 function App() {
   const [transcripts, setTranscripts] = useState([]);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
-  const [segmentDuration, setSegmentDuration] = useState(60);
-  
+  https://chatbot.kct.co.kr/database
   const processingCountRef = useRef(0);
   
   const {
@@ -26,9 +25,9 @@ function App() {
       return;
     }
 
-    const segmentNumber = Math.floor((segmentStartTime - recordingStartTime) / (segmentDuration * 1000)) + 1;
+    const segmentNumber = processingCountRef.current + 1;
     
-    console.log(`세그먼트 ${segmentNumber} 처리 시작`);
+    console.log(`음성 세그먼트 ${segmentNumber} 처리 시작`);
     
     try {
       processingCountRef.current++;
@@ -45,20 +44,13 @@ function App() {
           recordingStartTime: recordingStartTime
         };
         
-        const existingIndex = prev.findIndex(t => t.id === segmentStartTime);
-        if (existingIndex !== -1) {
-          const updated = [...prev];
-          updated[existingIndex] = newTranscript;
-          return updated.sort((a, b) => a.timestamp - b.timestamp);
-        }
-        
         return [...prev, newTranscript].sort((a, b) => a.timestamp - b.timestamp);
       });
       
-      console.log(`세그먼트 ${segmentNumber} 처리 완료:`, result.text);
+      console.log(`음성 세그먼트 ${segmentNumber} 처리 완료:`, result.text);
       
     } catch (error) {
-      console.error(`세그먼트 ${segmentNumber} 처리 실패:`, error);
+      console.error(`음성 세그먼트 ${segmentNumber} 처리 실패:`, error);
       
       setTranscripts(prev => {
         const errorTranscript = {
@@ -71,26 +63,19 @@ function App() {
           isError: true
         };
         
-        const existingIndex = prev.findIndex(t => t.id === segmentStartTime);
-        if (existingIndex !== -1) {
-          const updated = [...prev];
-          updated[existingIndex] = errorTranscript;
-          return updated.sort((a, b) => a.timestamp - b.timestamp);
-        }
-        
         return [...prev, errorTranscript].sort((a, b) => a.timestamp - b.timestamp);
       });
-    } finally {
-      processingCountRef.current--;
     }
-  }, [isModelReady, transcribeAudio, recordingStartTime, segmentDuration]);
+  }, [isModelReady, transcribeAudio, recordingStartTime]);
 
   const {
     isRecording,
     error: recordingError,
+    vadStatus,
+    segmentCount,
     startRecording,
     stopRecording
-  } = useAudioRecording(handleAudioSegment, segmentDuration * 1000);
+  } = useVADRecording(handleAudioSegment);
 
   const handleStartRecording = useCallback(async () => {
     if (!isModelReady) {
@@ -99,6 +84,7 @@ function App() {
     }
     
     setTranscripts([]);
+    processingCountRef.current = 0;
     setRecordingStartTime(Date.now());
     await startRecording();
   }, [isModelReady, startRecording]);
@@ -106,19 +92,15 @@ function App() {
   const handleStopRecording = useCallback(() => {
     stopRecording();
     setRecordingStartTime(null);
+    processingCountRef.current = 0;
   }, [stopRecording]);
 
-  const getSegmentTimeRange = useCallback((segmentNumber, segmentDuration) => {
-    const startSeconds = (segmentNumber - 1) * segmentDuration;
-    const endSeconds = segmentNumber * segmentDuration;
-    
-    const formatTime = (totalSeconds) => {
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    };
-    
-    return `${formatTime(startSeconds)} - ${formatTime(endSeconds)}`;
+  const formatElapsedTime = useCallback((timestamp, startTime) => {
+    if (!startTime) return '';
+    const elapsed = Math.floor((timestamp - startTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
 
   const downloadAsText = useCallback(() => {
@@ -133,17 +115,17 @@ function App() {
     let content = `회의록\n`;
     content += `날짜: ${meetingDate}\n`;
     content += `시작 시간: ${meetingTime}\n`;
-    content += `총 세그먼트: ${transcripts.length}개\n`;
-    content += `세그먼트 길이: ${segmentDuration}초\n\n`;
+    content += `총 음성 세그먼트: ${transcripts.length}개\n`;
+    content += `VAD 기반 음성 감지\n\n`;
     content += `${'='.repeat(50)}\n\n`;
 
     // 타임스탬프 순으로 정렬
     const sortedTranscripts = [...transcripts].sort((a, b) => a.timestamp - b.timestamp);
     
     sortedTranscripts.forEach((transcript) => {
-      const timeRange = getSegmentTimeRange(transcript.segmentNumber, segmentDuration);
-      content += `[세그먼트 #${transcript.segmentNumber}] ${timeRange}\n`;
-      content += `${transcript.text || '(음성이 감지되지 않았습니다)'}\n\n`;
+      const elapsedTime = formatElapsedTime(transcript.timestamp, recordingStartTime);
+      content += `[음성 #${transcript.segmentNumber}] ${elapsedTime}\n`;
+      content += `${transcript.text || '(텍스트가 비어있습니다)'}\n\n`;
     });
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -155,7 +137,7 @@ function App() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [transcripts, recordingStartTime, segmentDuration, getSegmentTimeRange]);
+  }, [transcripts, recordingStartTime, formatElapsedTime]);
 
   const downloadAsJson = useCallback(() => {
     if (transcripts.length === 0) {
@@ -176,15 +158,13 @@ function App() {
         startTime: meetingTime,
         recordingStartTimestamp: recordingStartTime,
         totalSegments: transcripts.length,
-        segmentDurationSeconds: segmentDuration,
+        vadBased: true,
         modelInfo: modelInfo,
         exportedAt: new Date().toISOString()
       },
       segments: sortedTranscripts.map(transcript => ({
         segmentNumber: transcript.segmentNumber,
-        timeRange: getSegmentTimeRange(transcript.segmentNumber, segmentDuration),
-        startTime: (transcript.segmentNumber - 1) * segmentDuration,
-        endTime: transcript.segmentNumber * segmentDuration,
+        elapsedTime: formatElapsedTime(transcript.timestamp, recordingStartTime),
         text: transcript.text || '',
         isEmpty: !transcript.text || transcript.text.trim() === '',
         isError: transcript.isError || false,
@@ -193,8 +173,7 @@ function App() {
         processingTime: transcript.processedAt ? new Date(transcript.processedAt).toISOString() : null
       })),
       summary: {
-        totalDurationSeconds: transcripts.length * segmentDuration,
-        totalDurationFormatted: getSegmentTimeRange(transcripts.length, segmentDuration).split(' - ')[1],
+        totalDurationSeconds: transcripts.length > 0 ? Math.floor((Math.max(...transcripts.map(t => t.timestamp)) - recordingStartTime) / 1000) : 0,
         segmentsWithText: sortedTranscripts.filter(t => t.text && t.text.trim() && !t.isError).length,
         segmentsEmpty: sortedTranscripts.filter(t => !t.text || t.text.trim() === '').length,
         segmentsWithErrors: sortedTranscripts.filter(t => t.isError).length
@@ -210,15 +189,8 @@ function App() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [transcripts, recordingStartTime, segmentDuration, modelInfo, getSegmentTimeRange]);
+  }, [transcripts, recordingStartTime, modelInfo, formatElapsedTime]);
 
-  const formatTimestamp = useCallback((timestamp, startTime) => {
-    if (!startTime) return '';
-    const elapsed = Math.floor((timestamp - startTime) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }, []);
 
   const getStatusText = () => {
     if (!isModelReady) {
@@ -230,8 +202,16 @@ function App() {
     }
     
     if (isRecording) {
-      if (isProcessing) return '녹음 중 & STT 처리 중...';
-      return '녹음 중...';
+      switch (vadStatus) {
+        case 'listening':
+          return '🎧 음성 대기 중...';
+        case 'speaking':
+          return '🎤 음성 녹음 중...';
+        case 'processing':
+          return '⚙️ STT 처리 중...';
+        default:
+          return '녹음 중...';
+      }
     }
     
     if (isProcessing) return 'STT 처리 중...';
@@ -247,7 +227,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>회의록 STT 앱</h1>
+      <h1>회의록 STT 앱 (VAD 기반)</h1>
       
       <div className="controls">
         <button
@@ -258,23 +238,11 @@ function App() {
           {isRecording ? '녹음 중지' : '녹음 시작'}
         </button>
         
-        <div>
-          <label>
-            세그먼트 길이: 
-            <select 
-              value={segmentDuration} 
-              onChange={(e) => setSegmentDuration(Number(e.target.value))}
-              disabled={isRecording}
-              style={{ marginLeft: '8px' }}
-            >
-              <option value={10}>10초</option>
-              <option value={30}>30초</option>
-              <option value={60}>1분</option>
-              <option value={120}>2분</option>
-              <option value={300}>5분</option>
-            </select>
-          </label>
-        </div>
+        {isRecording && (
+          <div style={{ marginLeft: '16px', fontSize: '14px', color: '#6b7280' }}>
+            감지된 음성: {segmentCount}개
+          </div>
+        )}
         
         <div className={getStatusClass()}>
           {isModelLoading && <div className="loading"><div className="spinner"></div></div>}
@@ -303,9 +271,9 @@ function App() {
             </button>
           </div>
           <div className="download-info">
-            <span>총 {transcripts.length}개 세그먼트</span>
+            <span>총 {transcripts.length}개 음성 세그먼트</span>
             <span> • </span>
-            <span>총 시간: {transcripts.length > 0 ? getSegmentTimeRange(transcripts.length, segmentDuration).split(' - ')[1] : '0:00'}</span>
+            <span>VAD 기반 자동 감지</span>
             <span> • </span>
             <span>모델: {modelInfo?.description || 'Unknown'}</span>
           </div>
@@ -329,7 +297,7 @@ function App() {
 
         {isRecording && transcripts.length === 0 && (
           <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
-            녹음 중... 첫 번째 세그먼트 처리를 기다리고 있습니다.
+            음성 감지 대기 중... 말씀하시면 자동으로 녹음됩니다.
           </p>
         )}
 
@@ -342,10 +310,10 @@ function App() {
             }}
           >
             <div className="transcript-timestamp">
-              세그먼트 #{transcript.segmentNumber} ({getSegmentTimeRange(transcript.segmentNumber, segmentDuration)})
+              음성 #{transcript.segmentNumber} ({formatElapsedTime(transcript.timestamp, recordingStartTime)})
               {transcript.processedAt && (
                 <span style={{ marginLeft: '8px', fontSize: '11px', color: '#9ca3af' }}>
-                  • 처리완료: {formatTimestamp(new Date(transcript.processedAt).toLocaleTimeString())}
+                  • 처리완료: {new Date(transcript.processedAt).toLocaleTimeString()}
                 </span>
               )}
             </div>
@@ -356,7 +324,7 @@ function App() {
                 fontStyle: transcript.isError ? 'italic' : 'normal'
               }}
             >
-              {transcript.text || '(음성이 감지되지 않았습니다)'}
+              {transcript.text || '(텍스트가 비어있습니다)'}
             </div>
           </div>
         ))}
