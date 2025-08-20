@@ -139,58 +139,6 @@ function App() {
     URL.revokeObjectURL(url);
   }, [transcripts, recordingStartTime, formatElapsedTime]);
 
-  const downloadAsJson = useCallback(() => {
-    if (transcripts.length === 0) {
-      alert('다운로드할 회의록이 없습니다.');
-      return;
-    }
-
-    const meetingDate = new Date().toLocaleDateString('ko-KR');
-    const meetingTime = recordingStartTime ? new Date(recordingStartTime).toLocaleTimeString('ko-KR') : '';
-    
-    // 타임스탬프 순으로 정렬
-    const sortedTranscripts = [...transcripts].sort((a, b) => a.timestamp - b.timestamp);
-
-    const jsonData = {
-      metadata: {
-        title: '회의록',
-        date: meetingDate,
-        startTime: meetingTime,
-        recordingStartTimestamp: recordingStartTime,
-        totalSegments: transcripts.length,
-        vadBased: true,
-        modelInfo: modelInfo,
-        exportedAt: new Date().toISOString()
-      },
-      segments: sortedTranscripts.map(transcript => ({
-        segmentNumber: transcript.segmentNumber,
-        elapsedTime: formatElapsedTime(transcript.timestamp, recordingStartTime),
-        text: transcript.text || '',
-        isEmpty: !transcript.text || transcript.text.trim() === '',
-        isError: transcript.isError || false,
-        timestamp: transcript.timestamp,
-        processedAt: transcript.processedAt,
-        processingTime: transcript.processedAt ? new Date(transcript.processedAt).toISOString() : null
-      })),
-      summary: {
-        totalDurationSeconds: transcripts.length > 0 ? Math.floor((Math.max(...transcripts.map(t => t.timestamp)) - recordingStartTime) / 1000) : 0,
-        segmentsWithText: sortedTranscripts.filter(t => t.text && t.text.trim() && !t.isError).length,
-        segmentsEmpty: sortedTranscripts.filter(t => !t.text || t.text.trim() === '').length,
-        segmentsWithErrors: sortedTranscripts.filter(t => t.isError).length
-      }
-    };
-
-    const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `회의록_${meetingDate.replace(/\./g, '')}_${new Date().getTime()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [transcripts, recordingStartTime, modelInfo, formatElapsedTime]);
-
 
   const getStatusText = () => {
     if (!isModelReady) {
@@ -261,13 +209,6 @@ function App() {
               title="텍스트 파일로 다운로드"
             >
               📄 TXT 다운로드
-            </button>
-            <button 
-              className="download-button json"
-              onClick={downloadAsJson}
-              title="JSON 파일로 다운로드 (상세 정보 포함)"
-            >
-              📋 JSON 다운로드
             </button>
           </div>
           <div className="download-info">
