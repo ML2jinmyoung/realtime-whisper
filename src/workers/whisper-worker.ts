@@ -126,7 +126,10 @@ self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
                 model: currentModel || 'onnx-community/whisper-large-v3-turbo',
                 subtask: options?.task || 'transcribe',
                 language: options?.language,
-                timestamp: options?.timestamp || Date.now()
+                timestamp: options?.timestamp || Date.now(),
+                options: {
+                    return_timestamps: options?.return_timestamps || false
+                }
             });
             
             if (result) {
@@ -304,14 +307,21 @@ interface TranscribeOptions {
     subtask?: string;
     language?: string | null;
     timestamp: number;
+    options?: {
+        return_timestamps?: boolean;
+    };
 }
 
 interface TranscribeResult {
     text: string;
     timestamp: number;
+    chunks?: Array<{
+        text: string;
+        timestamp: [number, number];
+    }> | null;
 }
 
-const transcribe = async ({ audio, model, subtask = "transcribe", language = null, timestamp }: TranscribeOptions): Promise<TranscribeResult> => {
+const transcribe = async ({ audio, model, subtask = "transcribe", language = null, timestamp, options }: TranscribeOptions): Promise<TranscribeResult> => {
     try {
         // audio가 Float32Array인지 확인
         if (!(audio instanceof Float32Array)) {
@@ -334,7 +344,7 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
             console.log("🎯 Auto-detecting language...");
             result = await transcriber(audio, {
                 task: subtask,
-                return_timestamps: false,
+                return_timestamps: options?.return_timestamps || false,
             });
         } else {
             // 지정된 언어로 처리 (fallback 제거)
@@ -344,14 +354,15 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
             result = await transcriber(audio, {
                 task: subtask,
                 language: lang,
-                return_timestamps: false,
+                return_timestamps: options?.return_timestamps || false,
             });
             console.log("✅ Language-specific transcription completed with:", lang);
         }
         
         return {
             text: result.text?.trim() || '',
-            timestamp: timestamp
+            timestamp: timestamp,
+            chunks: result.chunks || null
         };
     } catch (error) {
         console.error("❌ Transcription error:", error);

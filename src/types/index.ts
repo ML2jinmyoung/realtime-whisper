@@ -22,6 +22,10 @@ export type VADStatus = 'idle' | 'listening' | 'speaking' | 'processing';
 export interface STTResult {
   text: string;
   timestamp: number;
+  chunks?: Array<{
+    text: string;
+    timestamp: [number, number];
+  }> | null;
 }
 
 // Web Worker 메시지 타입

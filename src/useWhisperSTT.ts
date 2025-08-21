@@ -8,7 +8,7 @@ interface UseWhisperSTTReturn {
   error: string | null;
   loadingProgress: number;
   modelInfo: ModelInfo | null;
-  transcribeAudio: (audioBlob: Blob, timestamp: number, language?: string) => Promise<STTResult>;
+  transcribeAudio: (audioBlob: Blob, timestamp: number, language?: string, returnTimestamps?: boolean) => Promise<STTResult>;
   initializeModel: () => Promise<void>;
 }
 
@@ -16,6 +16,7 @@ interface QueueItem {
   audioBlob: Blob;
   timestamp: number;
   language: string;
+  returnTimestamps: boolean;
   resolve: (result: STTResult) => void;
   reject: (error: Error) => void;
 }
@@ -163,7 +164,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
 
     while (processingQueueRef.current.length > 0 && workerRef.current) {
       const queueItem = processingQueueRef.current[0];
-      const { audioBlob, timestamp, language, resolve, reject } = queueItem;
+      const { audioBlob, timestamp, language, returnTimestamps, resolve, reject } = queueItem;
 
       try {
         console.log('STT 처리 시작:', new Date(timestamp).toLocaleTimeString());
@@ -186,7 +187,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
               task: 'transcribe',
               chunk_length_s: 30,
               stride_length_s: 5,
-              return_timestamps: false,
+              return_timestamps: returnTimestamps,
               timestamp: timestamp
             }
           }
@@ -244,7 +245,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
     }
   }, [processAudioQueue]);
 
-  const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number, language: string = 'korean'): Promise<STTResult> => {
+  const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number, language: string = 'korean', returnTimestamps: boolean = false): Promise<STTResult> => {
     if (!workerRef.current || !isModelReady) {
       throw new Error('모델이 아직 로딩되지 않았습니다');
     }
@@ -254,6 +255,7 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
         audioBlob,
         timestamp,
         language,
+        returnTimestamps,
         resolve,
         reject
       });

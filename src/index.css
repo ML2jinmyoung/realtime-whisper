@@ -5,6 +5,41 @@
 @layer components {
   /* 커스텀 스피너 애니메이션 */
   .spinner {
-    @apply w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin;
+    @apply w-4 h-4 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin;
+  }
+  
+  /* 부드러운 스크롤 */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+  }
+  
+  /* 호버 효과 개선 */
+  .hover-lift {
+    transition: transform 0.2s ease-in-out;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+  
+  /* 음량 바 애니메이션 */
+  .volume-bar {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  /* 녹음 버튼 펄스 효과 */
+  @keyframes recording-pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+  
+  .recording-pulse {
+    animation: recording-pulse 2s ease-in-out infinite;
   }
 }
