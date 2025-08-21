@@ -368,48 +368,59 @@ export const BatchRecorder: React.FC<BatchRecorderProps> = ({
           {/* 녹음 버튼들 - 더 큰 크기로 강조 */}
           <div className="flex items-center justify-center gap-6">
             {!isRecording ? (
-              <button
-                className={`w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group ${
-                  isModelReady 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-gray-400 cursor-not-allowed'
-                }`}
-                onClick={handleStartRecording}
-                disabled={!isModelReady}
-              >
-                <div className={`w-5 h-5 rounded-full group-hover:scale-110 transition-transform ${
-                  isModelReady ? 'bg-white' : 'bg-gray-200'
-                }`}></div>
-              </button>
-            ) : (
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col items-center gap-2">
                 <button
+                  aria-label="녹음 시작"
                   className={`w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group ${
-                    isPaused 
-                      ? 'bg-green-500 hover:bg-green-600' 
-                      : 'bg-yellow-500 hover:bg-yellow-600'
+                    isModelReady 
+                      ? 'bg-red-500 hover:bg-red-600' 
+                      : 'bg-gray-400 cursor-not-allowed'
                   }`}
-                  onClick={isPaused ? handleResumeRecording : handlePauseRecording}
+                  onClick={handleStartRecording}
+                  disabled={!isModelReady}
                 >
-                  {isPaused ? (
-                    <div className="w-0 h-0 border-l-[10px] border-l-white border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent ml-1 group-hover:scale-110 transition-transform"></div>
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <div className="w-2 h-6 bg-white rounded-sm"></div>
-                      <div className="w-2 h-6 bg-white rounded-sm"></div>
-                    </div>
-                  )}
+                  <div className={`w-5 h-5 rounded-full group-hover:scale-110 transition-transform ${
+                    isModelReady ? 'bg-white' : 'bg-gray-200'
+                  }`}></div>
                 </button>
-                
-                <button
-                  className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center relative group"
-                  onClick={handleStopRecording}
-                >
-                  <div className="w-5 h-5 bg-white rounded-sm group-hover:scale-110 transition-transform"></div>
-                  {isRecording && !isPaused && (
-                    <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-400 rounded-full animate-pulse"></div>
-                  )}
-                </button>
+                <span className={`text-sm ${isModelReady ? 'text-gray-900' : 'text-gray-400'}`}>녹음 시작</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-8">
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    aria-label={isPaused ? '녹음 재개' : '녹음 일시정지'}
+                    className={`w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group ${
+                      isPaused 
+                        ? 'bg-green-500 hover:bg-green-600' 
+                        : 'bg-yellow-500 hover:bg-yellow-600'
+                    }`}
+                    onClick={isPaused ? handleResumeRecording : handlePauseRecording}
+                  >
+                    {isPaused ? (
+                      <div className="w-0 h-0 border-l-[10px] border-l-white border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent ml-1 group-hover:scale-110 transition-transform"></div>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <div className="w-2 h-6 bg-white rounded-sm"></div>
+                        <div className="w-2 h-6 bg-white rounded-sm"></div>
+                      </div>
+                    )}
+                  </button>
+                  <span className="text-sm text-gray-900">{isPaused ? '녹음 재개' : '녹음 일시정지'}</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    aria-label="종료"
+                    className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center relative group"
+                    onClick={handleStopRecording}
+                  >
+                    <div className="w-5 h-5 bg-white rounded-sm group-hover:scale-110 transition-transform"></div>
+                    {isRecording && !isPaused && (
+                      <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-400 rounded-full animate-pulse"></div>
+                    )}
+                  </button>
+                  <span className="text-sm text-gray-900">종료</span>
+                </div>
               </div>
             )}
           </div>

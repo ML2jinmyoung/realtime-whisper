@@ -52,8 +52,8 @@ function App(): JSX.Element {
           </p>
         </div>
         
-        {/* 모델 상태 표시 - 최상단에 강조 */}
-        <div className="flex items-center justify-center mb-8">
+        {/* 상단 컨트롤: 모델 상태 + 언어 토글 (한 줄 배치) */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
           <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-medium shadow-sm ${
             !isModelReady || sttError ? 'bg-gray-100 text-gray-600' :
             isProcessing ? 'bg-yellow-100 text-yellow-700' :
@@ -62,10 +62,7 @@ function App(): JSX.Element {
             {isModelLoading && <div className="spinner"></div>}
             {getModelStatusText()}
           </div>
-        </div>
-        
-        {/* 언어 설정 - 상단에 강조 */}
-        <div className="flex items-center justify-center mb-8">
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-1">
             <div className="flex">
               <button
