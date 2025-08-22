@@ -8,13 +8,15 @@ interface RealTimeRecorderProps {
   isModelReady: boolean;
   isModelLoading: boolean;
   sttError: string | null;
+  onRecordingStateChange?: (state: { isRecording: boolean; isPaused: boolean }) => void;
 }
 
 export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({ 
   currentLanguage, 
   isModelReady, 
   isModelLoading, 
-  sttError 
+  sttError,
+  onRecordingStateChange
 }) => {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
@@ -122,7 +124,7 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
     });
     
     if (!isModelReady) {
-      alert(`모델이 아직 준비되지 않았습니다.\\n상태: ${isModelLoading ? '로딩 중...' : '준비 중'}\\n${sttError ? `오류: ${sttError}` : ''}`);
+      alert(`모델이 아직 준비되지 않았습니다.\n상태: ${isModelLoading ? '로딩 중...' : '준비 중'}\n${sttError ? `오류: ${sttError}` : ''}`);
       return;
     }
     
@@ -130,27 +132,32 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
     processingCountRef.current = 0;
     setRecordingStartTime(Date.now());
     await startRecording();
-  }, [isModelReady, isModelLoading, sttError, startRecording]);
+    setIsPaused(false);
+    onRecordingStateChange?.({ isRecording: true, isPaused: false });
+  }, [isModelReady, isModelLoading, sttError, startRecording, onRecordingStateChange]);
 
   const handlePauseRecording = useCallback(() => {
     pauseRecording();
     setIsPaused(true);
+    onRecordingStateChange?.({ isRecording: true, isPaused: true });
     console.log('⏸️ 녹음 일시정지');
-  }, [pauseRecording]);
+  }, [pauseRecording, onRecordingStateChange]);
 
   const handleResumeRecording = useCallback(() => {
     resumeRecording();
     setIsPaused(false);
+    onRecordingStateChange?.({ isRecording: true, isPaused: false });
     console.log('▶️ 녹음 재개');
-  }, [resumeRecording]);
+  }, [resumeRecording, onRecordingStateChange]);
 
   const handleStopRecording = useCallback(() => {
     stopRecording();
     setRecordingStartTime(null);
     setIsPaused(false);
     processingCountRef.current = 0;
+    onRecordingStateChange?.({ isRecording: false, isPaused: false });
     console.log('⏹️ 녹음 종료');
-  }, [stopRecording]);
+  }, [stopRecording, onRecordingStateChange]);
 
   // 자동 스크롤 기능
   useEffect(() => {
@@ -177,12 +184,12 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
     const meetingDate = new Date().toLocaleDateString('ko-KR');
     const meetingTime = recordingStartTime ? new Date(recordingStartTime).toLocaleTimeString('ko-KR') : '';
     
-    let content = `회의록 (실시간 모드)\\n`;
-    content += `날짜: ${meetingDate}\\n`;
-    content += `시작 시간: ${meetingTime}\\n`;
-    content += `총 음성 세그먼트: ${transcripts.length}개\\n`;
-    content += `VAD 기반 음성 감지\\n\\n`;
-    content += `${'='.repeat(50)}\\n\\n`;
+    let content = `회의록 (실시간 모드)\n`;
+    content += `날짜: ${meetingDate}\n`;
+    content += `시작 시간: ${meetingTime}\n`;
+    content += `총 음성 세그먼트: ${transcripts.length}개\n`;
+    content += `VAD 기반 음성 감지\n\n`;
+    content += `${'='.repeat(50)}\n\n`;
 
     // 타임스탬프 순으로 정렬
     const sortedTranscripts = [...transcripts].sort((a, b) => a.timestamp - b.timestamp);
@@ -190,27 +197,25 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
     sortedTranscripts.forEach((transcript) => {
       const elapsedTime = formatElapsedTime(transcript.timestamp, transcript.recordingStartTime);
       const actualTime = new Date(transcript.timestamp).toLocaleTimeString('ko-KR');
-      content += `[${elapsedTime}] (${actualTime})\\n`;
-      content += `${transcript.text || '(텍스트가 비어있습니다)'}\\n\\n`;
+      content += `[${elapsedTime}] (${actualTime})\n`;
+      content += `${transcript.text || '(텍스트가 비어있습니다)'}\n\n`;
     });
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `실시간회의록_${meetingDate.replace(/\\./g, '')}_${new Date().getTime()}.txt`;
+    link.download = `실시간회의록_${meetingDate.replace(/\./g, '')}_${new Date().getTime()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [transcripts, recordingStartTime, formatElapsedTime]);
 
-
-
   return (
     <div className="space-y-6">
-      {/* 녹음 컨트롤 섹션 - 강조 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+      {/* 녹음 컨트롤 섹션 - 강조 (다크) */}
+      <div className="bg-gray-900 text-gray-100 rounded-xl shadow-sm border border-gray-800 p-8">
         <div className="flex flex-col items-center gap-8">
           {/* 녹음 버튼들 - 더 큰 크기로 강조 */}
           <div className="flex items-center justify-center gap-6">
@@ -221,16 +226,16 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
                   className={`w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group ${
                     isModelReady 
                       ? 'bg-red-500 hover:bg-red-600' 
-                      : 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gray-600 cursor-not-allowed'
                   }`}
                   onClick={handleStartRecording}
                   disabled={!isModelReady}
                 >
                   <div className={`w-5 h-5 rounded-full group-hover:scale-110 transition-transform ${
-                    isModelReady ? 'bg-white' : 'bg-gray-200'
+                    isModelReady ? 'bg-white' : 'bg-gray-300'
                   }`}></div>
                 </button>
-                <span className={`text-sm ${isModelReady ? 'text-gray-900' : 'text-gray-400'}`}>녹음 시작</span>
+                <span className={`text-sm ${isModelReady ? 'text-white' : 'text-gray-400'}`}>녹음 시작</span>
               </div>
             ) : (
               <div className="flex items-center justify-center gap-8">
@@ -253,7 +258,7 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
                       </div>
                     )}
                   </button>
-                  <span className="text-sm text-gray-900">{isPaused ? '녹음 재개' : '녹음 일시정지'}</span>
+                  <span className="text-sm text-white">{isPaused ? '녹음 재개' : '녹음 일시정지'}</span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <button
@@ -266,7 +271,7 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
                       <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-400 rounded-full animate-pulse"></div>
                     )}
                   </button>
-                  <span className="text-sm text-gray-900">종료</span>
+                  <span className="text-sm text-white">종료</span>
                 </div>
               </div>
             )}
@@ -275,11 +280,11 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
           {/* 모델 준비 상태 안내 */}
           {!isModelReady && (
             <div className="text-center">
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="text-sm text-gray-300 mb-2">
                 {isModelLoading ? '모델 로딩 중...' : '모델 준비 중...'}
               </p>
               {sttError && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-400">
                   오류: {sttError}
                 </p>
               )}
@@ -289,16 +294,16 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
           {/* 음량 체크 - 강조 */}
           {isRecording && (
             <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-4 text-sm text-gray-300">
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500">🎤</span>
-                  <span>음성 감지: <span className="font-semibold text-gray-900">{segmentCount}개</span></span>
+                  <span className="text-gray-300">🎤</span>
+                  <span>음성 감지: <span className="font-semibold text-white">{segmentCount}개</span></span>
                 </div>
               </div>
               
               {/* 음량 바 - 더 시각적으로 강조 */}
               <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500">음량</span>
+                <span className="text-xs text-gray-400">음량</span>
                 <div className="flex items-end gap-1 h-8">
                   {[...Array(10)].map((_, i) => (
                     <div
@@ -306,7 +311,7 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
                       className={`w-2 volume-bar rounded-sm ${
                         audioLevel > (i * 10) 
                           ? i < 3 ? 'bg-green-500' : i < 7 ? 'bg-yellow-500' : 'bg-red-500'
-                          : 'bg-gray-200'
+                          : 'bg-gray-600'
                       }`}
                       style={{ height: `${Math.max(6, (i + 1) * 2.5)}px` }}
                     ></div>
@@ -317,8 +322,6 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
           )}
         </div>
       </div>
-
-
 
       {/* 다운로드 섹션 - 심플하게 */}
       {transcripts.length > 0 && !isRecording && (

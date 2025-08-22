@@ -4,11 +4,21 @@ import { BatchRecorder } from './components/BatchRecorder';
 import { useWhisperSTT } from './useWhisperSTT';
 import './index.css';
 
+// 녹음 상태를 추적하기 위한 인터페이스
+interface RecordingState {
+  isRecording: boolean;
+  isPaused: boolean;
+}
+
 type RecordingMode = 'realtime' | 'batch';
 
 function App(): JSX.Element {
   const [recordingMode, setRecordingMode] = useState<RecordingMode>('realtime');
   const [currentLanguage, setCurrentLanguage] = useState<'korean' | 'english'>('korean');
+  const [recordingState, setRecordingState] = useState<RecordingState>({
+    isRecording: false,
+    isPaused: false
+  });
   
   // Whisper STT 훅 사용
   const {
@@ -29,14 +39,31 @@ function App(): JSX.Element {
   const getModelStatusText = () => {
     if (!isModelReady) {
       if (isModelLoading) {
-        return `Whisper 모델 로딩 중... ${loadingProgress}%`;
+        return `Whisper Large V3 Turbo 로딩 중... ${loadingProgress}%`;
       }
       if (sttError) return `❌ 모델 오류: ${sttError}`;
       return '⏳ 모델 준비 중...';
     }
     
     if (isProcessing) return 'STT 처리 중...';
-    return `✅ 준비 완료 (${modelInfo?.description || 'Whisper'})`;
+    return `✅ 준비 완료 (${modelInfo?.description || 'Whisper Large V3 Turbo'})`;
+  };
+
+  // 언어 변경 가능 여부 결정
+  const canChangeLanguage = () => {
+    if (!recordingState.isRecording) return true;
+    if (recordingMode === 'realtime') {
+      return recordingState.isPaused;
+    } else {
+      return false;
+    }
+  };
+
+  const handleLanguageChange = (newLanguage: 'korean' | 'english') => {
+    if (canChangeLanguage()) {
+      setCurrentLanguage(newLanguage);
+      console.log('🔄 언어 설정 변경:', currentLanguage, '→', newLanguage);
+    }
   };
 
   return (
@@ -52,7 +79,7 @@ function App(): JSX.Element {
           </p>
         </div>
         
-        {/* 상단 컨트롤: 모델 상태 + 언어 토글 (한 줄 배치) */}
+        {/* 상단 컨트롤: 모델 상태 + 언어 설정 */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
           <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full text-sm font-medium shadow-sm ${
             !isModelReady || sttError ? 'bg-gray-100 text-gray-600' :
@@ -66,22 +93,30 @@ function App(): JSX.Element {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-1">
             <div className="flex">
               <button
-                className={`px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   currentLanguage === 'korean' 
                     ? 'bg-gray-900 text-white shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    : canChangeLanguage()
+                      ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      : 'text-gray-400 cursor-not-allowed'
                 }`}
-                onClick={() => setCurrentLanguage('korean')}
+                onClick={() => handleLanguageChange('korean')}
+                disabled={!canChangeLanguage()}
+                title={!canChangeLanguage() ? '녹음 중에는 언어를 변경할 수 없습니다' : ''}
               >
                 🇰🇷 한국어
               </button>
               <button
-                className={`px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   currentLanguage === 'english' 
                     ? 'bg-gray-900 text-white shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    : canChangeLanguage()
+                      ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      : 'text-gray-400 cursor-not-allowed'
                 }`}
-                onClick={() => setCurrentLanguage('english')}
+                onClick={() => handleLanguageChange('english')}
+                disabled={!canChangeLanguage()}
+                title={!canChangeLanguage() ? '녹음 중에는 언어를 변경할 수 없습니다' : ''}
               >
                 🇺🇸 English
               </button>
@@ -137,17 +172,19 @@ function App(): JSX.Element {
         {/* 선택된 모드에 따른 컴포넌트 렌더링 */}
         {recordingMode === 'realtime' ? (
           <RealTimeRecorder 
-            currentLanguage={currentLanguage} 
+            currentLanguage={currentLanguage}
             isModelReady={isModelReady}
             isModelLoading={isModelLoading}
             sttError={sttError}
+            onRecordingStateChange={setRecordingState}
           />
         ) : (
           <BatchRecorder 
-            currentLanguage={currentLanguage} 
+            currentLanguage={currentLanguage}
             isModelReady={isModelReady}
             isModelLoading={isModelLoading}
             sttError={sttError}
+            onRecordingStateChange={setRecordingState}
           />
         )}
       </div>

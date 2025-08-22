@@ -10,6 +10,9 @@ interface UseWhisperSTTReturn {
   modelInfo: ModelInfo | null;
   transcribeAudio: (audioBlob: Blob, timestamp: number, language?: string, returnTimestamps?: boolean) => Promise<STTResult>;
   initializeModel: () => Promise<void>;
+  clearQueue: () => void;
+  waitForQueueCompletion: () => Promise<void>;
+  getQueueLength: () => number;
 }
 
 interface QueueItem {
@@ -245,6 +248,41 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
     }
   }, [processAudioQueue]);
 
+  const getQueueLength = useCallback(() => {
+    return processingQueueRef.current.length;
+  }, []);
+
+  const waitForQueueCompletion = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      const checkQueue = () => {
+        if (processingQueueRef.current.length === 0 && !isProcessingRef.current) {
+          console.log('✅ STT 큐 완료 대기 종료');
+          resolve();
+        } else {
+          console.log('⏳ STT 큐 대기 중:', processingQueueRef.current.length, '개 항목 남음');
+          setTimeout(checkQueue, 100);
+        }
+      };
+      checkQueue();
+    });
+  }, []);
+
+  const clearQueue = useCallback(() => {
+    console.log('🧹 STT 큐 클리어:', processingQueueRef.current.length, '개 항목 제거');
+    
+    // 대기 중인 모든 요청을 거부
+    processingQueueRef.current.forEach(item => {
+      item.reject(new Error('언어 변경으로 인한 큐 클리어'));
+    });
+    
+    // 큐 비우기
+    processingQueueRef.current = [];
+    
+    // 처리 상태 초기화
+    isProcessingRef.current = false;
+    setIsProcessing(false);
+  }, []);
+
   const transcribeAudio = useCallback(async (audioBlob: Blob, timestamp: number, language: string = 'korean', returnTimestamps: boolean = false): Promise<STTResult> => {
     if (!workerRef.current || !isModelReady) {
       throw new Error('모델이 아직 로딩되지 않았습니다');
@@ -284,6 +322,9 @@ export const useWhisperSTT = (): UseWhisperSTTReturn => {
     loadingProgress,
     modelInfo,
     transcribeAudio,
-    initializeModel
+    initializeModel,
+    clearQueue,
+    waitForQueueCompletion,
+    getQueueLength
   };
 };

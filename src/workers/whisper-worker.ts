@@ -5,6 +5,7 @@ import { WorkerMessage, WorkerResponse } from '../types';
 
 let transcriber: any = null;
 let currentModel: string | null = null;
+let lastLanguage: string | null = null;
 
 self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
     const message = event.data;
@@ -336,28 +337,15 @@ const transcribe = async ({ audio, model, subtask = "transcribe", language = nul
 
         console.log("🎵 Processing audio data, length:", audio.length, "language:", language);
 
-        // 한국어 기본, 영어 지원
-        let result;
+        // 지정된 언어로 처리
+        const lang = language === 'korean' ? 'ko' : language === 'english' ? 'en' : language;
+        console.log("🎯 지정 언어로 처리:", lang);
         
-        if (!language) {
-            // language가 null이면 자동 감지
-            console.log("🎯 Auto-detecting language...");
-            result = await transcriber(audio, {
-                task: subtask,
-                return_timestamps: options?.return_timestamps || false,
-            });
-        } else {
-            // 지정된 언어로 처리 (fallback 제거)
-            const lang = language === 'korean' ? 'ko' : language === 'english' ? 'en' : language;
-            console.log("🎯 Processing with specified language:", lang, "| Original:", language);
-            
-            result = await transcriber(audio, {
-                task: subtask,
-                language: lang,
-                return_timestamps: options?.return_timestamps || false,
-            });
-            console.log("✅ Language-specific transcription completed with:", lang);
-        }
+        const result = await transcriber(audio, {
+            task: subtask,
+            language: lang,
+            return_timestamps: options?.return_timestamps || false,
+        });
         
         return {
             text: result.text?.trim() || '',
