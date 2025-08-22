@@ -19,6 +19,7 @@ out/
 backend/.env
 backend/venv/
 backend/__pycache__/
+backend/stt_backend_env/
 
 
 # Logs
