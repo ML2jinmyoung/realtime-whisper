@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useVADRecording } from '../useVADRecording';
 import { useWhisperSTT } from '../useWhisperSTT';
 import { Transcript } from '../types';
+import { SummarySection } from './SummarySection';
 
 interface RealTimeRecorderProps {
   currentLanguage: 'korean' | 'english';
@@ -187,17 +188,16 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
     let content = `회의록 (실시간 모드)\n`;
     content += `날짜: ${meetingDate}\n`;
     content += `시작 시간: ${meetingTime}\n`;
-    content += `총 음성 세그먼트: ${transcripts.length}개\n`;
-    content += `VAD 기반 음성 감지\n\n`;
+    content += `언어: ${currentLanguage === 'korean' ? '한국어' : '영어'}\n`;
     content += `${'='.repeat(50)}\n\n`;
 
     // 타임스탬프 순으로 정렬
     const sortedTranscripts = [...transcripts].sort((a, b) => a.timestamp - b.timestamp);
     
     sortedTranscripts.forEach((transcript) => {
-      const elapsedTime = formatElapsedTime(transcript.timestamp, transcript.recordingStartTime);
-      const actualTime = new Date(transcript.timestamp).toLocaleTimeString('ko-KR');
-      content += `[${elapsedTime}] (${actualTime})\n`;
+      // const elapsedTime = formatElapsedTime(transcript.timestamp, transcript.recordingStartTime);
+      // const actualTime = new Date(transcript.timestamp).toLocaleTimeString('ko-KR');
+      // content += `[${elapsedTime}] (${actualTime})\n`;
       content += `${transcript.text || '(텍스트가 비어있습니다)'}\n\n`;
     });
 
@@ -323,20 +323,21 @@ export const RealTimeRecorder: React.FC<RealTimeRecorderProps> = ({
         </div>
       </div>
 
-      {/* 다운로드 섹션 - 심플하게 */}
-      {transcripts.length > 0 && !isRecording && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">회의록 다운로드</h3>
-            <span className="text-sm text-gray-500">{transcripts.length}개 세그먼트</span>
-          </div>
-          <button 
-            className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5 shadow-sm"
-            onClick={downloadAsText}
-          >
-            📄 TXT 다운로드
-          </button>
-        </div>
+
+      {/* LLM 요약 섹션 - 녹음 완전 종료 및 마지막 STT 처리 완료 후에만 표시 */}
+      {transcripts.length > 0 && !isRecording && !isProcessing && (
+        <SummarySection
+          transcripts={transcripts}
+          currentLanguage={currentLanguage}
+          meetingInfo={{
+            date: new Date().toLocaleDateString('ko-KR'),
+            startTime: recordingStartTime ? new Date(recordingStartTime).toLocaleTimeString('ko-KR') : '',
+            duration: '', // 실시간 모드는 총 진행 시간 계산이 복잡하므로 생략
+            segmentCount: transcripts.length
+          }}
+          mode="realtime"
+          onDownloadTxt={downloadAsText}
+        />
       )}
 
       {/* 오류 표시 */}

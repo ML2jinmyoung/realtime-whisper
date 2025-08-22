@@ -10,7 +10,16 @@
       "Bash(cp:*)",
       "Bash(rm:*)",
       "Bash(npm run build:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(pip show:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(pip install:*)",
+      "Bash(conda:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(uvicorn:*)",
+      "Bash(grep:*)",
+      "Bash(source:*)"
     ],
     "deny": [],
     "ask": []

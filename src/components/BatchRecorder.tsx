@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useWhisperSTT } from '../useWhisperSTT';
 import { Transcript } from '../types';
+import { SummarySection } from './SummarySection';
 
-interface TimestampedSegment {
+export interface TimestampedSegment {
   text: string;
   start: number;
   end: number;
@@ -323,15 +324,14 @@ export const BatchRecorder: React.FC<BatchRecorderProps> = ({
     content += `시작 시간: ${meetingTime}\n`;
     content += `녹음 시간: ${formatDuration(recordingDuration)}\n`;
     content += `언어: ${currentLanguage === 'korean' ? '한국어' : '영어'}\n`;
-    content += `세그먼트 수: ${transcripts.length}개\n\n`;
     content += `${'='.repeat(50)}\n\n`;
 
     if (timestampedSegments.length > 0) {
       // 타임스탬프별 세그먼트 표시
       timestampedSegments.forEach((segment, index) => {
-        const startTime = formatTime(segment.start);
-        const endTime = formatTime(segment.end);
-        content += `[${startTime} - ${endTime}]\n`;
+        // const startTime = formatTime(segment.start);
+        // const endTime = formatTime(segment.end);
+        // content += `[${startTime} - ${endTime}]\n`;
         content += `${segment.text || '(텍스트가 비어있습니다)'}\n\n`;
       });
     } else {
@@ -468,20 +468,22 @@ export const BatchRecorder: React.FC<BatchRecorderProps> = ({
         </div>
       )}
 
-      {/* 다운로드 섹션 - 심플하게 */}
+
+      {/* LLM 요약 섹션 - 녹음 완전 종료 및 STT 처리 완료 후에만 표시 */}
       {transcripts.length > 0 && !isRecording && !isProcessingBatch && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">회의록 다운로드</h3>
-            <span className="text-sm text-gray-500">{formatDuration(recordingDuration)} • {transcripts.length}개 세그먼트</span>
-          </div>
-          <button 
-            className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5 shadow-sm"
-            onClick={downloadAsText}
-          >
-            📄 TXT 다운로드
-          </button>
-        </div>
+        <SummarySection
+          transcripts={transcripts}
+          timestampedSegments={timestampedSegments}
+          currentLanguage={currentLanguage}
+          meetingInfo={{
+            date: new Date().toLocaleDateString('ko-KR'),
+            startTime: recordingStartTime ? new Date(recordingStartTime).toLocaleTimeString('ko-KR') : '',
+            duration: formatDuration(recordingDuration),
+            segmentCount: transcripts.length
+          }}
+          mode="batch"
+          onDownloadTxt={downloadAsText}
+        />
       )}
 
       {/* 오류 표시 */}
