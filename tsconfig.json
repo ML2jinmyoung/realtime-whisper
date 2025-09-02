@@ -4,7 +4,8 @@
     "lib": [
       "dom",
       "dom.iterable",
-      "webworker"
+      "webworker",
+      "es6"
     ],
     "allowJs": true,
     "skipLibCheck": true,
