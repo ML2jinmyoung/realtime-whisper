@@ -19,7 +19,10 @@
       "Bash(curl:*)",
       "Bash(uvicorn:*)",
       "Bash(grep:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
