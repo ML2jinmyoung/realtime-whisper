@@ -12,7 +12,7 @@ interface RecordingState {
 
 type RecordingMode = 'realtime' | 'batch';
 
-function App(): JSX.Element {
+function App(): React.ReactElement {
   const [recordingMode, setRecordingMode] = useState<RecordingMode>('realtime');
   const [currentLanguage, setCurrentLanguage] = useState<'korean' | 'english'>('korean');
   const [recordingState, setRecordingState] = useState<RecordingState>({
